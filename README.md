@@ -2,7 +2,7 @@
 
 # LLama Franca
 
-Cross-browser extension for local LLM page translation with Ollama. Just like lingua franca, but llama.
+Browser extension for local LLM page translation with Ollama. Just like lingua franca, but llama.
 
 ## Features
 
@@ -61,13 +61,19 @@ export default defineWebExtConfig({
 ### Build and install
 
 ```sh
-pnpm build          # → .output/chrome-mv3
-pnpm build:firefox  # → .output/firefox-mv2
+pnpm build          # all of the below
+pnpm build:chrome   # → dist/chrome-mv3 (Chrome, Edge, Brave, Opera, and other Chromium browsers)
+pnpm build:firefox  # → dist/firefox-mv2
+pnpm build:safari   # → dist/safari-mv2
 ```
 
-In a Chromium browser, open `chrome://extensions`, enable **Developer mode**, and **Load unpacked** the `.output/chrome-mv3` folder.
+In a Chromium browser, open `chrome://extensions`, enable **Developer mode**, and **Load unpacked** the `dist/chrome-mv3` folder.
 
-> Tested on Chromium ([Helium](https://helium.computer)). The Firefox build is untested.
+In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/firefox-mv2/manifest.json`. It stays loaded until Firefox restarts. To keep it installed, set `xpinstall.signatures.required` to `false` in `about:config` (Developer Edition, Nightly, or ESR only), run `pnpm zip:firefox`, and install the zip from `about:addons` → gear icon → **Install Add-on From File…**.
+
+The Safari build must be converted into an Xcode project on macOS with `xcrun safari-web-extension-packager dist/safari-mv2` before it can be installed.
+
+> Tested on Chromium ([Helium](https://helium.computer)). The Firefox and Safari builds are untested.
 
 ### Use
 
