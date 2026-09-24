@@ -51,8 +51,6 @@
 </script>
 
 <main class="flex flex-col gap-3 p-4">
-  <h1 class="text-base font-semibold">Llama Franca</h1>
-
   <div class="flex items-center gap-2">
     <select
       class="min-w-0 flex-1 rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"

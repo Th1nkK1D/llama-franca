@@ -1,3 +1,5 @@
+<img src="src/assets/icon.svg" alt="Llama Franca icon" width="128">
+
 # LLama Franca
 
 Cross-browser extension for local LLM page translation with Ollama. Just like lingua franca, but llama.
@@ -80,3 +82,7 @@ pnpm lint      # oxlint
 pnpm fmt:check # oxfmt
 pnpm test      # vitest
 ```
+
+---
+
+Not affiliated with Ollama. The icon is based on the [Ollama](https://ollama.com) logo, which belongs to its owners.
