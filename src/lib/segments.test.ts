@@ -31,12 +31,22 @@ test("splits blocks, marks inline elements, keeps wordless ones out of the promp
 });
 
 test("keeps wordless elements before the first word in front", () => {
-  const segment = page(
-    `<button><span class="icon"></span><span>Toggle</span><sup>1</sup></button>`,
-  )[0]!;
-  const button = document.querySelector("button")!;
-  swap(segment.original, buildNodes(segment, "[1:สลับ]"));
-  expect(button.innerHTML).toBe('<span class="icon"></span><span>สลับ</span><sup>1</sup>');
+  const segment = page(`<button><svg></svg> Toggle <b>menu</b><sup>1</sup></button>`)[0]!;
+  expect(segment.source).toBe("Toggle [1:menu]");
+  swap(segment.original, buildNodes(segment, "สลับ [1:เมนู]"));
+  expect(document.querySelector("button")!.innerHTML).toBe("<svg></svg>สลับ <b>เมนู</b><sup>1</sup>");
+});
+
+test("translates inside a lone element instead of marking it", () => {
+  const [segment] = page(
+    `<li><span class="icon"></span> <a href="/"><span>Main page</span></a></li>`,
+  );
+  expect(segment!.source).toBe("Main page");
+  expect(segment!.parent.localName).toBe("span");
+  swap(segment!.original, buildNodes(segment!, "หน้าหลัก"));
+  expect(document.querySelector("li")!.innerHTML).toBe(
+    '<span class="icon"></span> <a href="/"><span>หน้าหลัก</span></a>',
+  );
 });
 
 test("rebuilds translation with original elements and restores", () => {
@@ -55,6 +65,15 @@ test("rebuilds translation with original elements and restores", () => {
   swap(nodes, p.original);
   expect(el.innerHTML).toBe(
     'Click <a href="/x">here <img src="i.png"></a> or <b>go <i>now</i></b> <code>x</code><sup>[1]</sup>',
+  );
+});
+
+test("repairs markers closed with ')' or left open", () => {
+  const p = page(`<p>A <a href="/x">link (demo)</a>, <b>bold</b> and <i>it</i></p>`)[0]!;
+  expect(p.source).toBe("A [1:link (demo)], [2:bold] and [3:it]");
+  swap(p.original, buildNodes(p, "ก [1:ลิงก์ (สาธิต)], [2:หนา) และ [3:เอียง"));
+  expect(document.querySelector("p")!.innerHTML).toBe(
+    'ก <a href="/x">ลิงก์ (สาธิต)</a>, <b>หนา</b> และ เอียง',
   );
 });
 

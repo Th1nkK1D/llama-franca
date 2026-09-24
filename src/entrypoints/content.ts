@@ -8,6 +8,10 @@ import type {
 import { buildNodes, collectSegments, plainText, swap, type Segment } from "@/lib/segments";
 
 const CONCURRENCY = 2;
+/** Blocks up to this many characters are grouped; longer ones get their own request and language check. */
+const SHORT_TEXT = 40;
+const BATCH_LINES = 16;
+const MAIN_CONTENT = "main, article, [role=main]";
 
 interface Session {
   source: Language;
@@ -83,9 +87,12 @@ async function start(sourceCode: string, targetCode: string) {
   const observer = new IntersectionObserver(
     (entries) => {
       current.observed = true;
+      // Article content first, then the rest (menus, sidebars), each top to bottom.
+      const rank = (entry: IntersectionObserverEntry) =>
+        (entry.target.closest(MAIN_CONTENT) ? 0 : 1e6) + entry.boundingClientRect.top;
       const visible = entries
         .filter((entry) => entry.isIntersecting)
-        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        .sort((a, b) => rank(a) - rank(b));
       for (const entry of visible) {
         observer.unobserve(entry.target);
         current.queue.push(...byParent.get(entry.target)!);
@@ -108,35 +115,68 @@ async function start(sourceCode: string, targetCode: string) {
   byParent.forEach((_, parent) => observer.observe(parent));
 }
 
+async function detect(text: string) {
+  const result = await browser.i18n.detectLanguage(text).catch(() => undefined);
+  const top = result?.languages[0];
+  return top && (result.isReliable || top.percentage >= 50)
+    ? findLanguage(top.language)
+    : undefined;
+}
+
 async function detectLanguage(segments: Segment[]) {
   const sample = segments
     .map((s) => plainText(s.source))
     .join("\n")
     .slice(0, 2000);
-  const result = await browser.i18n.detectLanguage(sample).catch(() => undefined);
-  const top = result?.languages[0];
-  const detected = top && (result.isReliable || top.percentage >= 50) ? top.language : undefined;
-  return findLanguage(detected) ?? findLanguage(document.documentElement.lang);
+  return (await detect(sample)) ?? findLanguage(document.documentElement.lang);
+}
+
+const isShort = (segment: Segment) => plainText(segment.source).length <= SHORT_TEXT;
+
+/** Consecutive short blocks (menus, buttons, headings) go in one request, one per line. */
+function takeBatch(queue: Segment[]) {
+  const batch = [queue.shift()!];
+  if (!isShort(batch[0]!)) return batch;
+  while (batch.length < BATCH_LINES && queue[0] && isShort(queue[0])) batch.push(queue.shift()!);
+  return batch;
 }
 
 function pump(s: Session) {
   while (session === s && !s.error && s.inFlight < CONCURRENCY && s.queue.length) {
-    const segment = s.queue.shift()!;
-    s.inFlight++;
-    translateSegment(s, segment)
+    const batch = takeBatch(s.queue);
+    s.inFlight += batch.length;
+    translateBatch(s, batch)
       .catch((error: Error) => {
         s.error = error.message;
         s.queue.length = 0;
       })
       .finally(() => {
-        s.inFlight--;
+        s.inFlight -= batch.length;
         pump(s);
       });
   }
 }
 
+async function translateBatch(s: Session, batch: Segment[]) {
+  if (batch.length > 1) await prefetchLines(s.source, s.target, batch);
+  await Promise.all(batch.map((segment) => translateSegment(s, segment)));
+}
+
+/**
+ * Long blocks get their own language check (short text detects unreliably):
+ * skip ones already in the target, translate ones in another language from that language.
+ */
+async function blockSource(s: Session, segment: Segment) {
+  if (isShort(segment)) return s.source;
+  const detected = await detect(plainText(segment.source));
+  if (detected?.code === s.target.code) return;
+  return detected ?? s.source;
+}
+
 async function translateSegment(s: Session, segment: Segment) {
-  const translation = await requestTranslation(s.source, s.target, segment.source);
+  const source = await blockSource(s, segment);
+  if (!source) return;
+  const translation = await requestTranslation(source, s.target, segment.source);
   if (session !== s) return;
   const nodes = buildNodes(segment, translation);
   swap(segment.original, nodes);
@@ -144,15 +184,39 @@ async function translateSegment(s: Session, segment: Segment) {
   s.done++;
 }
 
+const cacheKey = (source: Language, target: Language, text: string) =>
+  `${source.code}>${target.code}\n${text}`;
+
+/** Translate uncached lines in one request and seed the cache; on a line-count mismatch each falls back to its own request. */
+async function prefetchLines(source: Language, target: Language, batch: Segment[]) {
+  const missing = [
+    ...new Set(
+      batch.map((s) => s.source).filter((text) => !cache.has(cacheKey(source, target, text))),
+    ),
+  ];
+  if (missing.length < 2) return;
+  const lines = (await sendTranslation(source, target, missing.join("\n")))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== missing.length) return;
+  missing.forEach((text, i) =>
+    cache.set(cacheKey(source, target, text), Promise.resolve(lines[i]!)),
+  );
+}
+
+async function sendTranslation(source: Language, target: Language, text: string) {
+  const message: TranslateTextMessage = { type: "translate-text", source, target, text };
+  const res: TranslateTextResponse = await browser.runtime.sendMessage(message);
+  if ("error" in res) throw new Error(res.error);
+  return res.text;
+}
+
 function requestTranslation(source: Language, target: Language, text: string) {
-  const key = `${source.code}>${target.code}\n${text}`;
+  const key = cacheKey(source, target, text);
   let result = cache.get(key);
   if (!result) {
-    const message: TranslateTextMessage = { type: "translate-text", source, target, text };
-    result = browser.runtime.sendMessage(message).then((res: TranslateTextResponse) => {
-      if ("error" in res) throw new Error(res.error);
-      return res.text;
-    });
+    result = sendTranslation(source, target, text);
     result.catch(() => cache.delete(key));
     cache.set(key, result);
   }

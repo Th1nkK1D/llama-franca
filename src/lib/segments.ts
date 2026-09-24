@@ -64,7 +64,34 @@ const VERBATIM = new Set(["code", "kbd", "samp", "var"]);
  * `[1:text]` is the marker syntax translategemma preserves best; `<1>…</1>` and HTML tags get dropped.
  * The model sometimes answers with full-width punctuation (`[1：text]`) for CJK targets.
  */
-const MARKER = /[[［]\s*(\d+)\s*[:：]\s*([^\]］]*?)\s*[\]］]/g;
+const MARKER_OPEN = /[[［]\s*(\d+)\s*[:：]\s*/g;
+
+type Part = string | { id: number; text: string };
+
+/**
+ * Split a marked-up translation into text and markers. The model sometimes closes a marker with `)`
+ * or not at all, so a marker ends at the first `]` before the next marker, else `)`, else it's dropped.
+ */
+function parseMarkers(marked: string): Part[] {
+  const opens = [...marked.matchAll(MARKER_OPEN)];
+  const parts: Part[] = [];
+  let pos = 0;
+  opens.forEach((open, k) => {
+    parts.push(marked.slice(pos, open.index));
+    const start = open.index + open[0].length;
+    const body = marked.slice(start, opens[k + 1]?.index ?? marked.length);
+    let close = body.search(/[\]］]/);
+    if (close < 0) close = body.search(/[)）]/);
+    if (close < 0) {
+      pos = start;
+      return;
+    }
+    parts.push({ id: Number(open[1]), text: body.slice(0, close).trim() });
+    pos = start + close + 1;
+  });
+  parts.push(marked.slice(pos));
+  return parts;
+}
 
 const hasLetters = (text: string | null) => /\p{L}/u.test(text ?? "");
 
@@ -95,8 +122,16 @@ export function collectSegments(root: Element): Segment[] {
     if (SKIP.has(el.localName) || isEditable(el)) return;
     let run: ChildNode[] = [];
     const flush = () => {
-      const segment = run.length ? toSegment(el, run) : undefined;
-      if (segment) segments.push(segment);
+      const [only, ...more] = run.filter((node) =>
+        node instanceof Element ? !isWordless(node) : hasLetters(node.textContent),
+      );
+      // A run that's a single element (e.g. a menu link) is translated inside it: no marker, element untouched.
+      if (only instanceof Element && !more.length && !VERBATIM.has(only.localName)) {
+        visit(only);
+      } else {
+        const segment = run.length ? toSegment(el, run) : undefined;
+        if (segment) segments.push(segment);
+      }
       run = [];
     };
     for (const child of el.childNodes) {
@@ -175,28 +210,27 @@ export function buildNodes(segment: Segment, translation: string): ChildNode[] {
   const fragment = document.createDocumentFragment();
   fragment.append(...segment.leading.map((el) => el.cloneNode(true)));
   const used = new Set<number>();
-  let last = 0;
-
-  for (const match of translation.matchAll(MARKER)) {
-    fragment.append(translation.slice(last, match.index));
-    last = match.index + match[0].length;
-    const [, rawId, text = ""] = match;
-    const id = Number(rawId);
-    const original = segment.markers.get(id);
-    if (original && !used.has(id)) {
-      used.add(id);
-      fragment.append(fill(original, text));
+  for (const part of parseMarkers(translation)) {
+    if (typeof part === "string") {
+      fragment.append(part);
+      continue;
+    }
+    const original = segment.markers.get(part.id);
+    if (original && !used.has(part.id)) {
+      used.add(part.id);
+      fragment.append(fill(original, part.text));
     } else {
-      fragment.append(text);
+      fragment.append(part.text);
     }
   }
-  fragment.append(translation.slice(last));
   fragment.append(...segment.trailing.map((el) => el.cloneNode(true)));
   return [...fragment.childNodes];
 }
 
 export function plainText(marked: string) {
-  return marked.replace(MARKER, "$2");
+  return parseMarkers(marked)
+    .map((part) => (typeof part === "string" ? part : part.text))
+    .join("");
 }
 
 export function swap(from: ChildNode[], to: ChildNode[]) {
