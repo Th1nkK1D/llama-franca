@@ -5,6 +5,11 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   srcDir: "src",
   modules: ["@wxt-dev/module-svelte"],
+  manifest: {
+    name: "Llama Franca",
+    permissions: ["storage"],
+    host_permissions: ["http://localhost:11434/*"],
+  },
   vite: () => ({
     plugins: [tailwindcss()],
   }),
