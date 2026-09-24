@@ -6,9 +6,18 @@ export interface Segment {
   /** Text sent to the model, inline elements written as `[N:text]`. */
   source: string;
   markers: Map<number, Element>;
-  /** Wordless inline elements (icons, footnote refs) kept out of the prompt, put back before / after the translation. */
+  /** Wordless inline elements (icons, footnote refs) kept out of the prompt, put back before / within the translation. */
   leading: Element[];
-  trailing: Element[];
+  trailing: Trailing[];
+}
+
+/** A wordless element after the first word, e.g. a footnote ref, and where it sat in the source. */
+interface Trailing {
+  el: Element;
+  /** Marker it directly followed (only punctuation / spaces between): placed right after that element. */
+  marker?: number;
+  /** Otherwise: relative position in the source text, 0–1, mapped onto the translation. */
+  ratio: number;
 }
 
 const SKIP = new Set([
@@ -162,21 +171,38 @@ function wrapsLinks(el: Element) {
 function toSegment(parent: Element, nodes: ChildNode[]): Segment | undefined {
   const markers = new Map<number, Element>();
   const leading: Element[] = [];
-  const trailing: Element[] = [];
+  const found: { el: Element; marker?: number; at: number }[] = [];
   let text = "";
+  let plain = "";
+  let lastMarker: number | undefined;
+  let sinceMarker = "";
 
   const serialize = (node: ChildNode) => {
     if (node.nodeType === Node.TEXT_NODE) {
       text += node.textContent;
+      plain += node.textContent;
+      sinceMarker += node.textContent;
     } else if (node instanceof Element) {
       if (isWordless(node)) {
-        (hasLetters(text) ? trailing : leading).push(node);
+        if (!hasLetters(text)) leading.push(node);
+        else {
+          const followsMarker = lastMarker !== undefined && /^[\s\p{P}]*$/u.test(sinceMarker);
+          found.push({
+            el: node,
+            marker: followsMarker ? lastMarker : undefined,
+            at: plain.length,
+          });
+        }
       } else if (wrapsLinks(node)) {
         node.childNodes.forEach(serialize);
       } else {
         const id = markers.size + 1;
+        const content = node.textContent?.trim() ?? "";
         markers.set(id, node);
-        text += `[${id}:${node.textContent?.trim()}]`;
+        text += `[${id}:${content}]`;
+        plain += content;
+        lastMarker = id;
+        sinceMarker = "";
       }
     }
   };
@@ -184,50 +210,117 @@ function toSegment(parent: Element, nodes: ChildNode[]): Segment | undefined {
 
   const source = text.replace(/\s+/g, " ").trim();
   if (!hasLetters(plainText(source))) return;
+  const trailing = found.map(({ el, marker, at }) => ({ el, marker, ratio: at / plain.length }));
   return { parent, original: nodes, source, markers, leading, trailing };
 }
 
-/** Copy of `el` with its words replaced by `text`, keeping nested formatting and icons. */
+/**
+ * Copy of `el` with its text replaced by `text`, keeping nested formatting and icons. The marker carried all of
+ * the element's text, punctuation included, so every other text node is cleared (else `/ˈlɑːmə/` came out `//ˈlɑːmə//`).
+ */
 function fill(el: Element, text: string) {
   const clone = el.cloneNode(true) as Element;
   if (VERBATIM.has(el.localName)) return clone;
   const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
   const texts: Text[] = [];
   while (walker.nextNode()) texts.push(walker.currentNode as Text);
-  const [first, ...rest] = texts.filter((node) => hasLetters(node.data));
+  const first = texts.find((node) => node.data.trim());
   if (!first) {
     clone.append(text);
     return clone;
   }
-  first.data = text;
-  rest.forEach((node) => (node.data = ""));
+  texts.forEach((node) => (node.data = node === first ? text : ""));
   return clone;
 }
 
-/**
- * Rebuild DOM nodes from a marked-up translation. Markers the model dropped lose their element but keep their words.
- * ponytail: wordless elements after the first word (footnote refs) all go to the end of the block,
- * anchor them to the neighbouring marker if that bothers.
- */
+/** Rebuild DOM nodes from a marked-up translation. Markers the model dropped lose their element but keep their words. */
 export function buildNodes(segment: Segment, translation: string): ChildNode[] {
   const fragment = document.createDocumentFragment();
   fragment.append(...segment.leading.map((el) => el.cloneNode(true)));
-  const used = new Set<number>();
+  const clones = new Map<number, Element>();
   for (const part of parseMarkers(translation)) {
     if (typeof part === "string") {
       fragment.append(part);
       continue;
     }
     const original = segment.markers.get(part.id);
-    if (original && !used.has(part.id)) {
-      used.add(part.id);
-      fragment.append(fill(original, part.text));
+    if (original && !clones.has(part.id)) {
+      const clone = fill(original, part.text);
+      clones.set(part.id, clone);
+      fragment.append(clone);
     } else {
       fragment.append(part.text);
     }
   }
-  fragment.append(...segment.trailing.map((el) => el.cloneNode(true)));
+  placeTrailing(fragment, segment.trailing, clones);
   return [...fragment.childNodes];
+}
+
+interface Spot {
+  /** Undefined for the end of the block. */
+  text?: Text;
+  offset: number;
+  pos: number;
+}
+
+/**
+ * Put footnote refs back: right after the marker they followed, else at the same relative position in the
+ * translation snapped to the nearest sentence end (or word gap, for scripts like Thai without periods).
+ */
+function placeTrailing(
+  fragment: DocumentFragment,
+  trailing: Trailing[],
+  clones: Map<number, Element>,
+) {
+  const sentenceEnds: Spot[] = [];
+  const gaps: Spot[] = [];
+  let total = 0;
+  for (const child of fragment.childNodes) {
+    if (child instanceof Text) {
+      for (const match of child.data.matchAll(/[.!?;。！？]+|\s+/g)) {
+        const isGap = /\s/.test(match[0]);
+        const offset = isGap ? match.index : match.index + match[0].length;
+        (isGap ? gaps : sentenceEnds).push({ text: child, offset, pos: total + offset });
+      }
+    }
+    total += child.textContent?.length ?? 0;
+  }
+  sentenceEnds.push({ offset: 0, pos: total });
+
+  const nearest = (spots: Spot[], target: number, within = Infinity) => {
+    let best: Spot | undefined;
+    for (const spot of spots) {
+      const distance = Math.abs(spot.pos - target);
+      if (distance <= within && (!best || distance < Math.abs(best.pos - target))) best = spot;
+    }
+    return best;
+  };
+
+  const afterMarker = new Map<Element, Element>();
+  const placed: { spot: Spot; node: Element }[] = [];
+  for (const item of trailing) {
+    const node = item.el.cloneNode(true) as Element;
+    const clone = item.marker === undefined ? undefined : clones.get(item.marker);
+    if (clone) {
+      (afterMarker.get(clone) ?? clone).after(node);
+      afterMarker.set(clone, node);
+      continue;
+    }
+    const target = item.ratio * total;
+    const spot = nearest(sentenceEnds, target, total * 0.2) ??
+      nearest(gaps, target) ?? {
+        offset: 0,
+        pos: total,
+      };
+    placed.push({ spot, node });
+  }
+
+  const atEnd: Node[] = [];
+  for (const { spot, node } of placed.reverse().sort((a, b) => b.spot.pos - a.spot.pos)) {
+    if (spot.text) spot.text.splitText(spot.offset).before(node);
+    else atEnd.unshift(node);
+  }
+  fragment.append(...atEnd);
 }
 
 export function plainText(marked: string) {

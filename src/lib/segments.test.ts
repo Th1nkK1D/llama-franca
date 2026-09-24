@@ -27,7 +27,7 @@ test("splits blocks, marks inline elements, keeps wordless ones out of the promp
     "line two",
     "see [1:A] and [2:B]",
   ]);
-  expect(segments[1]!.trailing.map((el) => el.localName)).toEqual(["sup"]);
+  expect(segments[1]!.trailing.map((t) => t.el.localName)).toEqual(["sup"]);
 });
 
 test("keeps wordless elements before the first word in front", () => {
@@ -59,7 +59,7 @@ test("rebuilds translation with original elements and restores", () => {
   swap(p.original, nodes);
   const el = document.querySelector("p")!;
   expect(el.innerHTML).toBe(
-    'คลิก <a href="/x">ที่นี่<img src="i.png"></a> หรือ<b>ไปเลย<i></i></b><code>x</code> ไม่มี<sup>[1]</sup>',
+    'คลิก <a href="/x">ที่นี่<img src="i.png"></a> หรือ<b>ไปเลย<i></i></b><code>x</code><sup>[1]</sup> ไม่มี',
   );
 
   swap(nodes, p.original);
@@ -85,6 +85,41 @@ test("repairs markers closed with ')' or left open", () => {
   swap(p.original, buildNodes(p, "ก [1:ลิงก์ (สาธิต)], [2:หนา) และ [3:เอียง"));
   expect(document.querySelector("p")!.innerHTML).toBe(
     'ก <a href="/x">ลิงก์ (สาธิต)</a>, <b>หนา</b> และ เอียง',
+  );
+});
+
+test("puts footnotes after their link, else at the matching sentence end or word gap", () => {
+  const html = (translation: string, source: string) => {
+    const p = page(`<p>${source}</p>`)[0]!;
+    swap(p.original, buildNodes(p, translation));
+    return document.querySelector("p")!.innerHTML;
+  };
+  expect(
+    html(
+      "ขนมี [1:ลาโนลิน] ลามาเรียนรู้",
+      'Wool has <a href="/l">lanolin</a>.<sup>[2]</sup> Llamas learn.',
+    ),
+  ).toBe('ขนมี <a href="/l">ลาโนลิน</a><sup>[2]</sup> ลามาเรียนรู้');
+  expect(
+    html(
+      "Première phrase ici. La deuxième phrase est ici.",
+      "First sentence here.<sup>[1]</sup> Second sentence is here.<sup>[2]</sup>",
+    ),
+  ).toBe("Première phrase ici.<sup>[1]</sup> La deuxième phrase est ici.<sup>[2]</sup>");
+  expect(
+    html(
+      "ประโยคแรก ประโยคที่สองอยู่ที่นี่",
+      "First sentence here.<sup>[1]</sup> Second sentence is here.<sup>[2]</sup>",
+    ),
+  ).toBe("ประโยคแรก<sup>[1]</sup> ประโยคที่สองอยู่ที่นี่<sup>[2]</sup>");
+});
+
+test("punctuation inside a link isn't doubled", () => {
+  const p = page(`<p>The llama (<a href="/ipa">/<span>ˈlɑːmə</span>/</a>)</p>`)[0]!;
+  expect(p.source).toBe("The llama ([1:/ˈlɑːmə/])");
+  swap(p.original, buildNodes(p, "ลามา ([1:/ˈlɑːmə/])"));
+  expect(document.querySelector("p")!.innerHTML).toBe(
+    'ลามา (<a href="/ipa">/ˈlɑːmə/<span></span></a>)',
   );
 });
 
