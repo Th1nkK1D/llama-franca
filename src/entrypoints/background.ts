@@ -1,11 +1,13 @@
 import type {
   BadgeMessage,
+  PageMessage,
   TabMode,
   TabModeMessage,
   TranslateTextMessage,
   TranslateTextResponse,
 } from "@/lib/messages";
 import { translate } from "@/lib/ollama";
+import { getTarget, sourcePref } from "@/lib/prefs";
 
 const modeKey = (tabId: number) => `tab-mode:${tabId}`;
 
@@ -45,6 +47,29 @@ export default defineBackground(() => {
       return true;
     },
   );
+
+  browser.runtime.onInstalled.addListener(() => {
+    browser.contextMenus.create({
+      id: "translate-page",
+      title: "Translate page",
+      contexts: ["page"],
+    });
+    browser.contextMenus.create({
+      id: "translate-selection",
+      title: 'Translate "%s"',
+      contexts: ["selection"],
+    });
+  });
+  browser.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (tab?.id === undefined) return;
+    const [source, target] = await Promise.all([sourcePref.getValue(), getTarget()]);
+    const message: PageMessage =
+      info.menuItemId === "translate-page"
+        ? { type: "translate-page", source, target }
+        : { type: "translate-selection", text: info.selectionText ?? "", source, target };
+    // Fails on pages without the content script (browser pages, tabs opened before install).
+    browser.tabs.sendMessage(tab.id, message).catch(() => {});
+  });
 
   // A full page load kills the content script before it can clear its badge.
   browser.tabs.onUpdated.addListener((tabId, info) => {

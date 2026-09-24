@@ -2,11 +2,7 @@
   import { findLanguage, LANGUAGES } from "@/lib/languages";
   import type { PageMessage, PageStatus } from "@/lib/messages";
   import { checkSetup } from "@/lib/ollama";
-
-  const sourceItem = storage.defineItem<string>("local:source", { fallback: "auto" });
-  const targetItem = storage.defineItem<string>("local:target", {
-    fallback: findLanguage(browser.i18n.getUILanguage())?.code ?? "en",
-  });
+  import { getTarget, setTarget, sourcePref } from "@/lib/prefs";
 
   let source = $state("auto");
   let target = $state("en");
@@ -22,8 +18,8 @@
       status.target !== target,
   );
 
-  sourceItem.getValue().then((value) => (source = value));
-  targetItem.getValue().then((value) => (target = value));
+  sourcePref.getValue().then((value) => (source = value));
+  getTarget().then((value) => (target = value));
   checkSetup().then((message) => (setupError = message));
 
   async function send(message: PageMessage) {
@@ -62,7 +58,7 @@
       class="min-w-0 flex-1 rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"
       aria-label="Source language"
       bind:value={source}
-      onchange={() => sourceItem.setValue(source)}
+      onchange={() => sourcePref.setValue(source)}
     >
       <option value="auto">
         Auto{source === "auto" && detected ? ` (${detected.label ?? detected.name})` : ""}
@@ -76,7 +72,7 @@
       class="min-w-0 flex-1 rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"
       aria-label="Target language"
       bind:value={target}
-      onchange={() => targetItem.setValue(target)}
+      onchange={() => setTarget(target)}
     >
       {#each LANGUAGES as lang (lang.code)}
         <option value={lang.code}>{lang.label ?? lang.name}</option>
@@ -90,7 +86,7 @@
       disabled={!!setupError}
       onclick={() => run({ type: "translate-page", source, target })}
     >
-      Translate
+      Translate page
     </button>
   {:else}
     <button

@@ -30,6 +30,8 @@ export type TabModeMessage =
 /** Popup → content script */
 export type PageMessage =
   | { type: "translate-page"; source: string; target: string }
+  /** Background (context menu) → content script */
+  | { type: "translate-selection"; text: string; source: string; target: string }
   | { type: "restore-page" }
   | { type: "page-status" };
 

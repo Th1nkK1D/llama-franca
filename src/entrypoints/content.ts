@@ -9,8 +9,10 @@ import type {
   TranslateTextMessage,
   TranslateTextResponse,
 } from "@/lib/messages";
+import { showPopover } from "@/lib/popover";
+import { setTarget, sourcePref } from "@/lib/prefs";
+import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { buildNodes, collectSegments, plainText, swap, type Segment } from "@/lib/segments";
-import "@/assets/content.css";
 
 const CONCURRENCY = 2;
 /** Blocks up to this many characters are grouped; longer ones get their own request and language check. */
@@ -20,11 +22,17 @@ const MAIN_CONTENT = "main, article, [role=main]";
 /** Wait for added content to settle before scanning it. */
 const SCAN_DELAY = 300;
 /**
- * Tints text while its translation is in flight (style in assets/content.css). A highlight marks the block's own
+ * Tints text while its translation is in flight (style: PENDING_STYLE). A highlight marks the block's own
  * nodes, not its parent, since blocks split by `<br>` share one parent.
  */
 let pendingHighlight: Highlight;
 const pendingRanges = new WeakMap<Segment, Range>();
+/**
+ * Adopted into the page rather than shipped as content script CSS: with cssInjectionMode "ui" that CSS only
+ * reaches the popover's shadow root, where it can't style the page's text.
+ */
+const PENDING_STYLE =
+  "::highlight(llama-franca-pending) { background-color: rgb(56 189 248 / 0.3); }";
 
 interface Session {
   requestedSource: string;
@@ -53,9 +61,14 @@ const known = new WeakSet<Node>();
 
 export default defineContentScript({
   matches: ["<all_urls>"],
+  // Content script CSS (the popover's Svelte styles) goes into the popover's shadow root, not the page.
+  cssInjectionMode: "ui",
   main(ctx) {
     pendingHighlight = new Highlight();
     CSS.highlights.set("llama-franca-pending", pendingHighlight);
+    const pendingSheet = new CSSStyleSheet();
+    pendingSheet.replaceSync(PENDING_STYLE);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, pendingSheet];
     // SPA navigation keeps this script alive: keep translating (new content arrives as mutations) but
     // restart the count and forget the old page's blocks. Hash jumps stay on the same page.
     ctx.addEventListener(window, "wxt:locationchange", ({ newUrl, oldUrl }) => {
@@ -69,6 +82,9 @@ export default defineContentScript({
           (error: Error) => sendResponse({ ...status(), error: error.message }),
         );
         return true;
+      }
+      if (message?.type === "translate-selection") {
+        void translateSelection(ctx, message.text, message.source, message.target);
       }
       if (message?.type === "restore-page") {
         restore();
@@ -86,6 +102,58 @@ export default defineContentScript({
       });
   },
 });
+
+async function translateSelection(
+  ctx: ContentScriptContext,
+  menuText: string,
+  sourceCode: string,
+  targetCode: string,
+) {
+  const selection = getSelection();
+  const text = (selection?.toString() || menuText).trim();
+  const anchor = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined;
+  let latest = 0;
+
+  const run = async (sourceCode: string, targetCode: string) => {
+    // Languages can change while a translation is in flight; only the latest one may render.
+    const id = ++latest;
+    popover.pending();
+
+    try {
+      if (!text) throw new Error("Nothing selected");
+      const target = findLanguage(targetCode);
+      if (!target) throw new Error(`Unsupported target language: ${targetCode}`);
+
+      const source =
+        sourceCode === "auto"
+          ? ((await detect(text)) ??
+            session?.source ??
+            (await detect(document.body.innerText.slice(0, 2000))) ??
+            findLanguage(document.documentElement.lang))
+          : findLanguage(sourceCode);
+
+      if (!source) throw new Error("Couldn't detect the language, pick a source language");
+
+      const translation =
+        source.code === target.code ? text : await requestTranslation(source, target, text);
+
+      if (id === latest) popover.show(translation, source.code);
+    } catch (error) {
+      if (id === latest) popover.fail((error as Error).message);
+    }
+  };
+
+  const popover = await showPopover(ctx, anchor, {
+    source: sourceCode,
+    target: targetCode,
+    onchange: (source, target) => {
+      void sourcePref.setValue(source);
+      void setTarget(target);
+      void run(source, target);
+    },
+  });
+  await run(sourceCode, targetCode);
+}
 
 function setTabMode(mode: TabMode | null) {
   const message: TabModeMessage = { type: "set-tab-mode", mode };

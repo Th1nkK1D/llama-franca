@@ -7,7 +7,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-svelte"],
   manifest: {
     name: "Llama Franca",
-    permissions: ["storage"],
+    permissions: ["storage", "contextMenus"],
     host_permissions: ["http://localhost:11434/*"],
   },
   vite: () => ({
