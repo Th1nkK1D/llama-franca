@@ -14,6 +14,8 @@ const CONCURRENCY = 2;
 const SHORT_TEXT = 40;
 const BATCH_LINES = 16;
 const MAIN_CONTENT = "main, article, [role=main]";
+/** Wait for added content to settle before scanning it. */
+const SCAN_DELAY = 300;
 /**
  * Tints text while its translation is in flight (style in assets/content.css). A highlight marks the block's own
  * nodes, not its parent, since blocks split by `<br>` share one parent.
@@ -26,26 +28,36 @@ interface Session {
   source: Language;
   target: Language;
   segments: Segment[];
+  /** Segments waiting to scroll into view, by the element the visibility observer watches. */
+  byParent: Map<Element, Segment[]>;
   queue: Segment[];
   inFlight: number;
   done: number;
   observer: IntersectionObserver;
   /** False until the observer's first callback queues the visible blocks. */
   observed: boolean;
+  /** Picks up content added after the page was scanned (infinite scroll, SPA navigation). */
+  mutations: MutationObserver;
+  scanRoots: Set<Element>;
+  scanTimer?: ReturnType<typeof setTimeout>;
   error?: string;
 }
 
 let session: Session | undefined;
 const cache = new Map<string, Promise<string>>();
+/** Nodes already collected or inserted as a translation, so mutation scans only pick up new content. */
+const known = new WeakSet<Node>();
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   main(ctx) {
     pendingHighlight = new Highlight();
     CSS.highlights.set("llama-franca-pending", pendingHighlight);
-    // SPA navigation keeps this script alive, so drop the old page's session. Hash jumps stay on the same page.
+    // SPA navigation keeps this script alive: keep translating (new content arrives as mutations) but
+    // restart the count and forget the old page's blocks. Hash jumps stay on the same page.
     ctx.addEventListener(window, "wxt:locationchange", ({ newUrl, oldUrl }) => {
-      if (newUrl.href.split("#")[0] !== oldUrl.href.split("#")[0]) restore();
+      if (session && newUrl.href.split("#")[0] !== oldUrl.href.split("#")[0])
+        forgetDetached(session);
     });
     browser.runtime.onMessage.addListener((message: PageMessage, _sender, sendResponse) => {
       if (message?.type === "translate-page") {
@@ -106,41 +118,93 @@ async function start(sourceCode: string, targetCode: string) {
     throw new Error(`Page is already in ${target.label ?? target.name}`);
   }
 
-  const byParent = new Map<Element, Segment[]>();
-  for (const segment of segments) {
-    byParent.set(segment.parent, [...(byParent.get(segment.parent) ?? []), segment]);
-  }
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      current.observed = true;
-      // Article content first, then the rest (menus, sidebars), each top to bottom.
-      const rank = (entry: IntersectionObserverEntry) =>
-        (entry.target.closest(MAIN_CONTENT) ? 0 : 1e6) + entry.boundingClientRect.top;
-      const visible = entries
-        .filter((entry) => entry.isIntersecting)
-        .sort((a, b) => rank(a) - rank(b));
-      for (const entry of visible) {
-        observer.unobserve(entry.target);
-        current.queue.push(...byParent.get(entry.target)!);
-      }
-      pump(current);
-    },
-    { rootMargin: "300px 0px" },
-  );
   const current: Session = {
     requestedSource: sourceCode,
     source,
     target,
-    segments,
+    segments: [],
+    byParent: new Map(),
     queue: [],
     inFlight: 0,
     done: 0,
-    observer,
+    observer: new IntersectionObserver((entries) => onVisible(current, entries), {
+      rootMargin: "300px 0px",
+    }),
     observed: false,
+    mutations: new MutationObserver((records) => onMutations(current, records)),
+    scanRoots: new Set(),
   };
   session = current;
-  byParent.forEach((_, parent) => observer.observe(parent));
+  addSegments(current, segments);
+  current.mutations.observe(document.body, { childList: true, subtree: true });
+  report();
+}
+
+/** Track segments and translate each once its parent scrolls near the viewport. */
+function addSegments(s: Session, segments: Segment[]) {
+  for (const segment of segments) {
+    segment.original.forEach((node) => known.add(node));
+    s.segments.push(segment);
+    const waiting = s.byParent.get(segment.parent);
+    if (waiting) {
+      waiting.push(segment);
+    } else {
+      s.byParent.set(segment.parent, [segment]);
+      s.observer.observe(segment.parent);
+    }
+  }
+}
+
+function onVisible(s: Session, entries: IntersectionObserverEntry[]) {
+  s.observed = true;
+  const rank = (entry: IntersectionObserverEntry) =>
+    (entry.target.closest(MAIN_CONTENT) ? 0 : 1e6) + entry.boundingClientRect.top;
+  const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => rank(a) - rank(b));
+  for (const entry of visible) {
+    s.observer.unobserve(entry.target);
+    s.queue.push(...(s.byParent.get(entry.target) ?? []));
+    s.byParent.delete(entry.target);
+  }
+  pump(s);
+}
+
+function onMutations(s: Session, records: MutationRecord[]) {
+  for (const record of records) {
+    for (const node of record.addedNodes) {
+      if (known.has(node)) continue;
+      const root = node instanceof Element ? node : node.parentElement;
+      if (root) s.scanRoots.add(root);
+    }
+  }
+  if (s.scanRoots.size && !s.scanTimer) s.scanTimer = setTimeout(() => scan(s), SCAN_DELAY);
+}
+
+/**
+ * A run mixing translated and new nodes (text appended to a translated paragraph) is skipped,
+ * split runs by known nodes if that shows up.
+ */
+function scan(s: Session) {
+  s.scanTimer = undefined;
+  if (session !== s) return;
+  for (const root of s.scanRoots) {
+    if (!root.isConnected) continue;
+    const fresh = collectSegments(root).filter((seg) => !seg.original.some((n) => known.has(n)));
+    addSegments(s, fresh);
+  }
+  s.scanRoots.clear();
+}
+
+/** After SPA navigation: drop blocks the old page removed and restart the count. */
+function forgetDetached(s: Session) {
+  const attached = (seg: Segment) => (seg.translated ?? seg.original).some((n) => n.isConnected);
+  s.segments = s.segments.filter(attached);
+  s.queue = s.queue.filter(attached);
+  for (const parent of s.byParent.keys()) {
+    if (parent.isConnected) continue;
+    s.observer.unobserve(parent);
+    s.byParent.delete(parent);
+  }
+  s.done = 0;
   report();
 }
 
@@ -225,11 +289,13 @@ async function blockSource(s: Session, segment: Segment) {
 }
 
 async function translateSegment(s: Session, segment: Segment) {
+  if (!segment.original.some((node) => node.isConnected)) return;
   const source = await blockSource(s, segment);
   if (!source) return;
   const translation = await requestTranslation(source, s.target, segment.source);
   if (session !== s) return;
   const nodes = buildNodes(segment, translation);
+  nodes.forEach((node) => known.add(node));
   swap(segment.original, nodes);
   segment.translated = nodes;
   s.done++;
@@ -277,6 +343,8 @@ function requestTranslation(source: Language, target: Language, text: string) {
 function restore() {
   if (!session) return;
   session.observer.disconnect();
+  session.mutations.disconnect();
+  clearTimeout(session.scanTimer);
   for (const segment of session.segments) {
     if (segment.translated) swap(segment.translated, segment.original);
     segment.translated = undefined;

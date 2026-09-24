@@ -115,8 +115,11 @@ function isEditable(el: Element) {
   return (el as HTMLElement).isContentEditable || el.getAttribute("translate") === "no";
 }
 
+const SKIP_ANCESTOR = [...SKIP, "[translate=no]"].join(",");
+
 export function collectSegments(root: Element): Segment[] {
   const segments: Segment[] = [];
+  if (root.parentElement?.closest(SKIP_ANCESTOR)) return segments;
 
   const visit = (el: Element) => {
     if (SKIP.has(el.localName) || isEditable(el)) return;

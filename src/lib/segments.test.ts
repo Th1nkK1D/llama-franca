@@ -68,6 +68,17 @@ test("rebuilds translation with original elements and restores", () => {
   );
 });
 
+test("skips roots inside code blocks, editors and translate=no", () => {
+  document.body.innerHTML = `
+    <pre><span id="a">code text</span></pre>
+    <div contenteditable="true"><p id="b">draft text</p></div>
+    <div translate="no"><p id="c">brand name</p></div>
+    <div><p id="d">real text</p></div>`;
+  const sources = (id: string) =>
+    collectSegments(document.getElementById(id)!).map((s) => s.source);
+  expect(["a", "b", "c", "d"].map(sources)).toEqual([[], [], [], ["real text"]]);
+});
+
 test("repairs markers closed with ')' or left open", () => {
   const p = page(`<p>A <a href="/x">link (demo)</a>, <b>bold</b> and <i>it</i></p>`)[0]!;
   expect(p.source).toBe("A [1:link (demo)], [2:bold] and [3:it]");
