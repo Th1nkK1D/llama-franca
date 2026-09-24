@@ -1,0 +1,44 @@
+{
+  "name": "llama-franca",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cross-browser extension for local LLM page translation with Ollama",
+  "license": "MIT",
+  "author": "Th1nkK1D <witheep@gmail.com>",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint": "oxlint",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "@tsconfig/svelte": "^5.0.8",
+    "@wxt-dev/module-svelte": "^2.0.4",
+    "lint-staged": "^17.5.1",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.85.0",
+    "simple-git-hooks": "^2.14.0",
+    "svelte": "^5.53.7",
+    "svelte-check": "^4.4.4",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5",
+    "web-ext": "^10.5.0",
+    "wxt": "^0.21.3"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged --concurrent false"
+  },
+  "lint-staged": {
+    "*.{js,mjs,cjs,ts,mts,cts,svelte}": "oxlint --fix",
+    "*": "oxfmt --no-error-on-unmatched-pattern"
+  }
+}
