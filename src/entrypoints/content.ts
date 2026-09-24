@@ -22,6 +22,7 @@ let pendingHighlight: Highlight;
 const pendingRanges = new WeakMap<Segment, Range>();
 
 interface Session {
+  requestedSource: string;
   source: Language;
   target: Language;
   segments: Segment[];
@@ -69,6 +70,8 @@ function status(): PageStatus {
   return {
     state: pending || !session.observed ? "translating" : "translated",
     source: session.source.code,
+    requestedSource: session.requestedSource,
+    target: session.target.code,
     done: session.done,
     pending,
     error: session.error,
@@ -126,6 +129,7 @@ async function start(sourceCode: string, targetCode: string) {
     { rootMargin: "300px 0px" },
   );
   const current: Session = {
+    requestedSource: sourceCode,
     source,
     target,
     segments,

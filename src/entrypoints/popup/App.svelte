@@ -15,6 +15,12 @@
   let setupError = $state<string>();
   let error = $derived(actionError ?? setupError ?? status?.error);
   let detected = $derived(findLanguage(status?.source));
+  let canTranslate = $derived(
+    !status ||
+      status.state === "idle" ||
+      status.requestedSource !== source ||
+      status.target !== target,
+  );
 
   sourceItem.getValue().then((value) => (source = value));
   targetItem.getValue().then((value) => (target = value));
@@ -78,7 +84,7 @@
     </select>
   </div>
 
-  {#if !status || status.state === "idle"}
+  {#if canTranslate}
     <button
       class="cursor-pointer rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
       disabled={!!setupError}

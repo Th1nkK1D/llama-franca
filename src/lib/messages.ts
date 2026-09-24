@@ -25,6 +25,8 @@ export type PageMessage =
 export interface PageStatus {
   state: "idle" | "translating" | "translated";
   source?: string;
+  requestedSource?: string;
+  target?: string;
   done: number;
   pending: number;
   error?: string;
