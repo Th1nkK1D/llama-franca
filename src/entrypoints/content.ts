@@ -1,8 +1,11 @@
+import { getStored, putStored } from "@/lib/cache";
 import { findLanguage, type Language } from "@/lib/languages";
 import type {
   BadgeMessage,
   PageMessage,
   PageStatus,
+  TabMode,
+  TabModeMessage,
   TranslateTextMessage,
   TranslateTextResponse,
 } from "@/lib/messages";
@@ -69,12 +72,25 @@ export default defineContentScript({
       }
       if (message?.type === "restore-page") {
         restore();
+        setTabMode(null);
         sendResponse(status());
       }
       if (message?.type === "page-status") sendResponse(status());
     });
+
+    browser.runtime
+      .sendMessage({ type: "get-tab-mode" } satisfies TabModeMessage)
+      .then((mode: TabMode | null) => {
+        // Errors like "page is already in the target language" just leave this page as is.
+        if (mode && !session) start(mode.source, mode.target).catch(() => {});
+      });
   },
 });
+
+function setTabMode(mode: TabMode | null) {
+  const message: TabModeMessage = { type: "set-tab-mode", mode };
+  browser.runtime.sendMessage(message).catch(() => {});
+}
 
 function status(): PageStatus {
   if (!session) return { state: "idle", done: 0, pending: 0 };
@@ -135,6 +151,7 @@ async function start(sourceCode: string, targetCode: string) {
     scanRoots: new Set(),
   };
   session = current;
+  setTabMode({ source: sourceCode, target: targetCode });
   addSegments(current, segments);
   current.mutations.observe(document.body, { childList: true, subtree: true });
   report();
@@ -306,20 +323,27 @@ const cacheKey = (source: Language, target: Language, text: string) =>
 
 /** Translate uncached lines in one request and seed the cache; on a line-count mismatch each falls back to its own request. */
 async function prefetchLines(source: Language, target: Language, batch: Segment[]) {
-  const missing = [
+  const unseen = [
     ...new Set(
       batch.map((s) => s.source).filter((text) => !cache.has(cacheKey(source, target, text))),
     ),
   ];
+  const stored = await Promise.all(unseen.map((text) => getStored(source, target, text)));
+  const missing = unseen.filter((text, i) => {
+    const hit = stored[i];
+    if (hit !== undefined) cache.set(cacheKey(source, target, text), Promise.resolve(hit));
+    return hit === undefined;
+  });
   if (missing.length < 2) return;
   const lines = (await sendTranslation(source, target, missing.join("\n")))
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length !== missing.length) return;
-  missing.forEach((text, i) =>
-    cache.set(cacheKey(source, target, text), Promise.resolve(lines[i]!)),
-  );
+  missing.forEach((text, i) => {
+    cache.set(cacheKey(source, target, text), Promise.resolve(lines[i]!));
+    void putStored(source, target, text, lines[i]!);
+  });
 }
 
 async function sendTranslation(source: Language, target: Language, text: string) {
@@ -333,7 +357,12 @@ function requestTranslation(source: Language, target: Language, text: string) {
   const key = cacheKey(source, target, text);
   let result = cache.get(key);
   if (!result) {
-    result = sendTranslation(source, target, text);
+    result = getStored(source, target, text).then(async (stored) => {
+      if (stored !== undefined) return stored;
+      const translation = await sendTranslation(source, target, text);
+      void putStored(source, target, text, translation);
+      return translation;
+    });
     result.catch(() => cache.delete(key));
     cache.set(key, result);
   }
