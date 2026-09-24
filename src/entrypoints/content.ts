@@ -1,17 +1,25 @@
 import { findLanguage, type Language } from "@/lib/languages";
 import type {
+  BadgeMessage,
   PageMessage,
   PageStatus,
   TranslateTextMessage,
   TranslateTextResponse,
 } from "@/lib/messages";
 import { buildNodes, collectSegments, plainText, swap, type Segment } from "@/lib/segments";
+import "@/assets/content.css";
 
 const CONCURRENCY = 2;
 /** Blocks up to this many characters are grouped; longer ones get their own request and language check. */
 const SHORT_TEXT = 40;
 const BATCH_LINES = 16;
 const MAIN_CONTENT = "main, article, [role=main]";
+/**
+ * Tints text while its translation is in flight (style in assets/content.css). A highlight marks the block's own
+ * nodes, not its parent, since blocks split by `<br>` share one parent.
+ */
+let pendingHighlight: Highlight;
+const pendingRanges = new WeakMap<Segment, Range>();
 
 interface Session {
   source: Language;
@@ -32,6 +40,8 @@ const cache = new Map<string, Promise<string>>();
 export default defineContentScript({
   matches: ["<all_urls>"],
   main(ctx) {
+    pendingHighlight = new Highlight();
+    CSS.highlights.set("llama-franca-pending", pendingHighlight);
     // SPA navigation keeps this script alive, so drop the old page's session. Hash jumps stay on the same page.
     ctx.addEventListener(window, "wxt:locationchange", ({ newUrl, oldUrl }) => {
       if (newUrl.href.split("#")[0] !== oldUrl.href.split("#")[0]) restore();
@@ -63,6 +73,20 @@ function status(): PageStatus {
     pending,
     error: session.error,
   };
+}
+
+/** Toolbar badge: blocks left while translating, target language when done, "!" on error. */
+function report() {
+  const { state, pending, error } = status();
+  const text = error
+    ? "!"
+    : state === "translating"
+      ? String(pending || "…")
+      : state === "translated"
+        ? session!.target.code.split("-")[0]!.toUpperCase()
+        : "";
+  const message: BadgeMessage = { type: "badge", text, error: !!error };
+  browser.runtime.sendMessage(message).catch(() => {});
 }
 
 async function start(sourceCode: string, targetCode: string) {
@@ -113,6 +137,7 @@ async function start(sourceCode: string, targetCode: string) {
   };
   session = current;
   byParent.forEach((_, parent) => observer.observe(parent));
+  report();
 }
 
 async function detect(text: string) {
@@ -145,6 +170,7 @@ function pump(s: Session) {
   while (session === s && !s.error && s.inFlight < CONCURRENCY && s.queue.length) {
     const batch = takeBatch(s.queue);
     s.inFlight += batch.length;
+    batch.forEach((segment) => setPending(segment, true));
     translateBatch(s, batch)
       .catch((error: Error) => {
         s.error = error.message;
@@ -155,11 +181,32 @@ function pump(s: Session) {
         pump(s);
       });
   }
+  if (session === s) report();
+}
+
+function setPending(segment: Segment, on: boolean) {
+  const existing = pendingRanges.get(segment);
+  if (existing) pendingHighlight.delete(existing);
+  if (!on) return;
+  const range = new Range();
+  range.setStartBefore(segment.original[0]!);
+  range.setEndAfter(segment.original.at(-1)!);
+  pendingRanges.set(segment, range);
+  pendingHighlight.add(range);
 }
 
 async function translateBatch(s: Session, batch: Segment[]) {
-  if (batch.length > 1) await prefetchLines(s.source, s.target, batch);
-  await Promise.all(batch.map((segment) => translateSegment(s, segment)));
+  const prefetched = batch.length > 1 ? prefetchLines(s.source, s.target, batch) : undefined;
+  await Promise.all(
+    batch.map(async (segment) => {
+      try {
+        await prefetched;
+        await translateSegment(s, segment);
+      } finally {
+        setPending(segment, false);
+      }
+    }),
+  );
 }
 
 /**
@@ -230,5 +277,7 @@ function restore() {
     if (segment.translated) swap(segment.translated, segment.original);
     segment.translated = undefined;
   }
+  pendingHighlight.clear();
   session = undefined;
+  report();
 }

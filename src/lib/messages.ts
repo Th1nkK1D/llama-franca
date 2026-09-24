@@ -9,6 +9,13 @@ export interface TranslateTextMessage {
 }
 export type TranslateTextResponse = { text: string } | { error: string };
 
+/** Content script → background: toolbar badge for the sender's tab */
+export interface BadgeMessage {
+  type: "badge";
+  text: string;
+  error?: boolean;
+}
+
 /** Popup → content script */
 export type PageMessage =
   | { type: "translate-page"; source: string; target: string }

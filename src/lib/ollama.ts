@@ -14,28 +14,41 @@ Produce only the ${t} translation, without any additional explanations or commen
 ${text}`;
 }
 
-export async function translate(source: Language, target: Language, text: string) {
+const UNREACHABLE = `Ollama is not reachable at ${OLLAMA_URL}. Is it running?`;
+const FORBIDDEN = "Ollama rejected the extension origin, set OLLAMA_ORIGINS=chrome-extension://*";
+const MISSING_MODEL = `Model ${MODEL} isn't installed. Run: ollama pull ${MODEL}`;
+
+async function request(path: string, init?: RequestInit) {
   let res: Response;
   try {
-    res = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST",
-      body: JSON.stringify({
-        model: MODEL,
-        stream: false,
-        messages: [{ role: "user", content: buildPrompt(source, target, text) }],
-      }),
-    });
+    res = await fetch(`${OLLAMA_URL}${path}`, init);
   } catch {
-    throw new Error(`Ollama is not reachable at ${OLLAMA_URL}`);
+    throw new Error(UNREACHABLE);
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (res.status === 403) {
-      throw new Error(
-        "Ollama rejected the extension origin, set OLLAMA_ORIGINS=chrome-extension://*",
-      );
-    }
-    throw new Error(body.error ?? `Ollama responded ${res.status}`);
+  if (res.status === 403) throw new Error(FORBIDDEN);
+  if (res.status === 404 && /model/i.test(body.error ?? "")) throw new Error(MISSING_MODEL);
+  if (!res.ok) throw new Error(body.error ?? `Ollama responded ${res.status}`);
+  return body;
+}
+
+export async function checkSetup() {
+  try {
+    const { models = [] } = await request("/api/tags");
+    if (!models.some((m: { name: string }) => m.name === MODEL)) return MISSING_MODEL;
+  } catch (error) {
+    return (error as Error).message;
   }
+}
+
+export async function translate(source: Language, target: Language, text: string) {
+  const body = await request("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({
+      model: MODEL,
+      stream: false,
+      messages: [{ role: "user", content: buildPrompt(source, target, text) }],
+    }),
+  });
   return (body.message?.content ?? "").trim() as string;
 }

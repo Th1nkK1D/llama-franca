@@ -1,6 +1,7 @@
 <script lang="ts">
   import { findLanguage, LANGUAGES } from "@/lib/languages";
   import type { PageMessage, PageStatus } from "@/lib/messages";
+  import { checkSetup } from "@/lib/ollama";
 
   const sourceItem = storage.defineItem<string>("local:source", { fallback: "auto" });
   const targetItem = storage.defineItem<string>("local:target", {
@@ -11,11 +12,13 @@
   let target = $state("en");
   let status = $state<PageStatus>();
   let actionError = $state<string>();
-  let error = $derived(actionError ?? status?.error);
+  let setupError = $state<string>();
+  let error = $derived(actionError ?? setupError ?? status?.error);
   let detected = $derived(findLanguage(status?.source));
 
   sourceItem.getValue().then((value) => (source = value));
   targetItem.getValue().then((value) => (target = value));
+  checkSetup().then((message) => (setupError = message));
 
   async function send(message: PageMessage) {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -77,7 +80,8 @@
 
   {#if !status || status.state === "idle"}
     <button
-      class="cursor-pointer rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700"
+      class="cursor-pointer rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={!!setupError}
       onclick={() => run({ type: "translate-page", source, target })}
     >
       Translate
