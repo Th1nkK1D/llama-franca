@@ -1,4 +1,8 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": []
+  "ignorePatterns": [],
+  "svelte": true,
+  "sortTailwindcss": {
+    "stylesheet": "./src/entrypoints/popup/app.css"
+  }
 }

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import svelteLogo from '../../assets/svelte.svg'
-  import Counter from '../../lib/Counter.svelte'
+  import svelteLogo from "../../assets/svelte.svg";
+  import Counter from "../../lib/Counter.svelte";
 </script>
 
 <main>
-  <div>
+  <div class="flex justify-center">
     <a href="https://wxt.dev" target="_blank" rel="noreferrer">
       <img src="/wxt.svg" class="logo" alt="WXT Logo" />
     </a>
@@ -12,15 +12,13 @@
       <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
     </a>
   </div>
-  <h1>WXT + Svelte</h1>
+  <h1 class="my-[0.67em] text-[3.2em] leading-[1.1] font-bold">WXT + Svelte</h1>
 
-  <div class="card">
+  <div class="p-[2em]">
     <Counter />
   </div>
 
-  <p class="read-the-docs">
-    Click on the WXT and Svelte logos to learn more
-  </p>
+  <p class="read-the-docs my-4">Click on the WXT and Svelte logos to learn more</p>
 </main>
 
 <style>
