@@ -91,4 +91,4 @@ pnpm test      # vitest
 
 ---
 
-Not affiliated with Ollama. The icon is based on the [Ollama](https://ollama.com) logo, which belongs to its owners.
+Not affiliated with [Ollama](https://ollama.com).
