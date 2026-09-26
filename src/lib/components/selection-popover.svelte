@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { findLanguage, LANGUAGES } from "./languages";
+  import LanguageOptions from "./language-options.svelte";
+  import { findLanguage } from "../languages";
 
   let {
     source = $bindable("auto"),
@@ -42,12 +43,7 @@
       bind:value={source}
       onchange={() => onchange(source, target)}
     >
-      <option value="auto">
-        Auto{detectedLanguage ? ` (${detectedLanguage.label ?? detectedLanguage.name})` : ""}
-      </option>
-      {#each LANGUAGES as lang (lang.code)}
-        <option value={lang.code}>{lang.label ?? lang.name}</option>
-      {/each}
+      <LanguageOptions auto detected={detectedLanguage} />
     </select>
     <span aria-hidden="true">→</span>
     <select
@@ -55,9 +51,7 @@
       bind:value={target}
       onchange={() => onchange(source, target)}
     >
-      {#each LANGUAGES as lang (lang.code)}
-        <option value={lang.code}>{lang.label ?? lang.name}</option>
-      {/each}
+      <LanguageOptions />
     </select>
     <button class="close" aria-label="Close" onclick={onclose}>×</button>
   </div>

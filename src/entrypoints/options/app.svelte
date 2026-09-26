@@ -1,5 +1,7 @@
 <script lang="ts">
+  import Button from "@/lib/components/button.svelte";
   import { cacheUsage, clearCache, evict } from "@/lib/cache";
+  import Field from "@/lib/components/field.svelte";
   import { listModels } from "@/lib/ollama";
   import {
     cacheLimitPref,
@@ -62,23 +64,15 @@
 </script>
 
 <main class="flex flex-col gap-4 p-4">
-  <label class="flex flex-col gap-1">
-    <span class="font-medium">Model</span>
-    <select
-      class="rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"
-      bind:value={model}
-      onchange={() => modelPref.setValue(model)}
-    >
+  <Field label="Model" error={modelsError}>
+    <select class="control" bind:value={model} onchange={() => modelPref.setValue(model)}>
       {#each options as name (name)}
         <option value={name}
           >{name}{models.length && !models.includes(name) ? " (not installed)" : ""}</option
         >
       {/each}
     </select>
-    {#if modelsError}
-      <span class="text-red-600 dark:text-red-400">{modelsError}</span>
-    {/if}
-    <span class="text-gray-500">
+    {#snippet hint()}
       Recommended: <a
         class="underline"
         href="https://ollama.com/library/translategemma"
@@ -86,66 +80,45 @@
         rel="noreferrer">TranslateGemma</a
       >, which the default prompt is written for. Other models may need a different prompt, drop
       links and formatting, or translate slower when blocks are batched.
-    </span>
-  </label>
+    {/snippet}
+  </Field>
 
-  <label class="flex flex-col gap-1">
-    <span class="font-medium">Prompt template</span>
+  <Field
+    label="Prompt template"
+    error={validPrompt ? undefined : "Must include {text}, not saved."}
+    hint="Placeholders: {placeholders}"
+  >
     <textarea
-      class="h-64 rounded border border-gray-300 bg-white p-2 font-mono text-xs dark:border-gray-600 dark:bg-gray-900"
+      class="h-64 control font-mono text-xs"
       bind:value={prompt}
       oninput={() => validPrompt && promptPref.setValue(prompt)}></textarea>
-    {#if validPrompt}
-      <span class="text-gray-500">Placeholders: {placeholders}</span>
-    {:else}
-      <span class="text-red-600 dark:text-red-400">
-        Must include {"{text}"}, not saved. Placeholders: {placeholders}
-      </span>
-    {/if}
-  </label>
+  </Field>
 
-  <div class="flex flex-col gap-1">
-    <label class="flex items-center gap-2">
-      <span class="font-medium">Translation cache</span>
-      <input
-        type="number"
-        class="w-20 rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"
-        min="0"
-        max={MAX_CACHE_MB}
-        step="0.5"
-        bind:value={cacheLimit}
-        onchange={saveCacheLimit}
-      />
-      <span>MB</span>
-    </label>
-    {#if !validCacheLimit}
-      <span class="text-red-600 dark:text-red-400">
-        Must be 0 to {MAX_CACHE_MB} MB, not saved.
-      </span>
-    {:else if cacheLimit === 0}
-      <span class="text-gray-500">Disabled, every page is translated again.</span>
-    {:else if usage}
-      <span class="text-gray-500">
-        {usage.count} translations, {formatBytes(usage.bytes)} used. The older half is removed when full.
-        Set 0 to disable.
-      </span>
-    {/if}
-  </div>
+  <Field
+    label="Translation cache"
+    inline
+    error={validCacheLimit ? undefined : `Must be 0 to ${MAX_CACHE_MB} MB, not saved.`}
+    hint={cacheLimit === 0
+      ? "Disabled, every page is translated again."
+      : usage &&
+        `${usage.count} translations, ${formatBytes(usage.bytes)} used. The older half is removed when full. Set 0 to disable.`}
+  >
+    <input
+      type="number"
+      class="w-20 control"
+      min="0"
+      max={MAX_CACHE_MB}
+      step="0.5"
+      bind:value={cacheLimit}
+      onchange={saveCacheLimit}
+    />
+    <span>MB</span>
+  </Field>
 
-  <div class="flex flex-row justify-end gap-2">
-    <button
-      class="cursor-pointer self-start rounded border border-gray-300 px-3 py-1.5 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-      disabled={!usage?.count}
-      onclick={() => clearCache().then(refreshUsage)}
-    >
+  <div class="flex justify-end gap-2">
+    <Button disabled={!usage?.count} onclick={() => clearCache().then(refreshUsage)}>
       Clear cache
-    </button>
-
-    <button
-      class="cursor-pointer self-start rounded border border-gray-300 px-3 py-1.5 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
-      onclick={reset}
-    >
-      Reset to defaults
-    </button>
+    </Button>
+    <Button onclick={reset}>Reset to defaults</Button>
   </div>
 </main>

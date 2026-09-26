@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { findLanguage, LANGUAGES } from "@/lib/languages";
+  import Button from "@/lib/components/button.svelte";
+  import LanguageOptions from "@/lib/components/language-options.svelte";
+  import { findLanguage } from "@/lib/languages";
   import type { PageMessage, PageStatus } from "@/lib/messages";
   import { checkSetup } from "@/lib/ollama";
   import { getTarget, setTarget, sourcePref } from "@/lib/prefs";
@@ -53,50 +55,39 @@
 <main class="flex flex-col gap-3 p-4">
   <div class="flex items-center gap-2">
     <select
-      class="min-w-0 flex-1 rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"
+      class="min-w-0 flex-1 control"
       aria-label="Source language"
       bind:value={source}
       onchange={() => sourcePref.setValue(source)}
     >
-      <option value="auto">
-        Auto{source === "auto" && detected ? ` (${detected.label ?? detected.name})` : ""}
-      </option>
-      {#each LANGUAGES as lang (lang.code)}
-        <option value={lang.code}>{lang.label ?? lang.name}</option>
-      {/each}
+      <LanguageOptions auto detected={source === "auto" ? detected : undefined} />
     </select>
     <span aria-hidden="true">→</span>
     <select
-      class="min-w-0 flex-1 rounded border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-900"
+      class="min-w-0 flex-1 control"
       aria-label="Target language"
       bind:value={target}
       onchange={() => setTarget(target)}
     >
-      {#each LANGUAGES as lang (lang.code)}
-        <option value={lang.code}>{lang.label ?? lang.name}</option>
-      {/each}
+      <LanguageOptions />
     </select>
   </div>
 
   <div class="flex gap-2">
     {#if canTranslate}
-      <button
-        class="flex-1 cursor-pointer rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+      <Button
+        variant="primary"
+        class="flex-1"
         disabled={!!setupError}
         onclick={() => run({ type: "translate-page", source, target })}
       >
         Translate page
-      </button>
+      </Button>
     {:else}
-      <button
-        class="flex-1 cursor-pointer rounded border border-gray-300 px-3 py-1.5 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
-        onclick={() => run({ type: "restore-page" })}
-      >
-        Show original
-      </button>
+      <Button class="flex-1" onclick={() => run({ type: "restore-page" })}>Show original</Button>
     {/if}
-    <button
-      class="flex cursor-pointer items-center justify-center rounded px-1 hover:bg-gray-100 dark:hover:bg-gray-800"
+    <Button
+      variant="icon"
       aria-label="Settings"
       title="Settings"
       onclick={() => browser.runtime.openOptionsPage()}
@@ -116,7 +107,7 @@
         />
         <circle cx="12" cy="12" r="3" />
       </svg>
-    </button>
+    </Button>
   </div>
 
   {#if error}
