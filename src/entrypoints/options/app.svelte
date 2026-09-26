@@ -89,7 +89,7 @@
     hint="Placeholders: {placeholders}"
   >
     <textarea
-      class="h-64 control font-mono text-xs"
+      class="control h-64 font-mono text-xs"
       bind:value={prompt}
       oninput={() => validPrompt && promptPref.setValue(prompt)}></textarea>
   </Field>
@@ -105,7 +105,7 @@
   >
     <input
       type="number"
-      class="w-20 control"
+      class="control w-20"
       min="0"
       max={MAX_CACHE_MB}
       step="0.5"

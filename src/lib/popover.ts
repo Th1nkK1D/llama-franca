@@ -1,6 +1,7 @@
 import { mount, unmount } from "svelte";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import SelectionPopover from "./components/selection-popover.svelte";
+import "@/assets/control.css";
 
 /** Matches the box's max-width in selection-popover.svelte, to keep it inside the viewport. */
 const WIDTH = 480;

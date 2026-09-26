@@ -55,7 +55,7 @@
 <main class="flex flex-col gap-3 p-4">
   <div class="flex items-center gap-2">
     <select
-      class="min-w-0 flex-1 control"
+      class="control min-w-0 flex-1"
       aria-label="Source language"
       bind:value={source}
       onchange={() => sourcePref.setValue(source)}
@@ -64,7 +64,7 @@
     </select>
     <span aria-hidden="true">→</span>
     <select
-      class="min-w-0 flex-1 control"
+      class="control min-w-0 flex-1"
       aria-label="Target language"
       bind:value={target}
       onchange={() => setTarget(target)}

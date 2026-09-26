@@ -39,6 +39,7 @@
 <div class="box" role="dialog" aria-label="Translation">
   <div class="header">
     <select
+      class="control"
       aria-label="Source language"
       bind:value={source}
       onchange={() => onchange(source, target)}
@@ -47,6 +48,7 @@
     </select>
     <span aria-hidden="true">→</span>
     <select
+      class="control"
       aria-label="Target language"
       bind:value={target}
       onchange={() => onchange(source, target)}
@@ -76,7 +78,7 @@
     border: 1px solid #d1d5db;
     border-radius: 8px;
     box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
-    padding: 8px 12px 10px;
+    padding: 8px 12px 6px;
     min-width: 160px;
     max-width: 480px;
     color-scheme: light;
@@ -89,19 +91,6 @@
     font-size: 12px;
     color: #6b7280;
   }
-  select {
-    font: inherit;
-    color: inherit;
-    background-color: #fff;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 1px 2px;
-    cursor: pointer;
-  }
-  select:hover {
-    border-color: #d1d5db;
-  }
-  select:focus-visible,
   .close:focus-visible {
     outline: 2px solid #38bdf8;
   }
@@ -115,6 +104,7 @@
     border-radius: 4px;
   }
   .body {
+    padding: 4px 0;
     white-space: pre-wrap;
     max-height: 50vh;
     overflow: auto;
@@ -134,12 +124,6 @@
       background: #1f2937;
       border-color: #374151;
       color-scheme: dark;
-    }
-    select {
-      background-color: #1f2937;
-    }
-    select:hover {
-      border-color: #4b5563;
     }
     .body {
       scrollbar-color: rgb(255 255 255 / 0.2) transparent;

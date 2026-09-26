@@ -1,0 +1,47 @@
+/*
+ * Form controls (select, input, textarea), shared by the Tailwind pages (via app.css) and the selection
+ * popover's shadow root, where Tailwind utilities don't apply. A class rather than components so `bind:value`
+ * stays native.
+ */
+@layer components {
+  .control {
+    font: inherit;
+    color: inherit;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    background-color: #fff;
+    padding: 0.25rem 0.5rem;
+  }
+  /* Single-line controls get a fixed height matching buttons (h-8); the browser centers the text. */
+  select.control,
+  input.control {
+    height: 2rem;
+    padding-block: 0;
+  }
+  .control:focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: -1px;
+  }
+
+  /* The native select arrow ignores padding, so draw our own. */
+  select.control {
+    appearance: none;
+    cursor: pointer;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.25rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem;
+  }
+  /* A background can't animate, so it flips rather than rotates. Older browsers without :open keep it down. */
+  select.control:open {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E");
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .control {
+      border-color: #4b5563;
+      background-color: #111827;
+    }
+  }
+}
