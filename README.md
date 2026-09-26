@@ -11,7 +11,7 @@ Browser extension for local LLM page translation with Ollama. Just like lingua f
 - **Auto-detects** the source language, per page and per block, and skips text already in the target language.
 - **Visible text first**: blocks translate as they scroll into view, main content before menus and sidebars.
 - **Keeps up with the page**: content loaded later (infinite scroll, SPA navigation) is translated too, and a tab keeps translating across page loads until **Show original**.
-- **Cached**: translations are stored locally, so revisiting a page is instant.
+- **Cached**: translations are stored locally, so revisiting a page is instant. Its size limit (8 MB by default, 0 to disable) and a clear button are in **Settings**.
 - **Progress** shown as a tint on text being translated and a badge on the toolbar icon.
 - **Fully local**: text only goes to your own Ollama server.
 - **Configurable**: pick any installed Ollama model and edit the prompt template in **Settings**, with a reset to defaults.

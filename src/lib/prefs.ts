@@ -18,5 +18,11 @@ Produce only the {target} translation, without any additional explanations or co
 
 {text}`;
 
+/** storage.local allows 10 MB without the unlimitedStorage permission, the rest is left for settings. */
+export const MAX_CACHE_MB = 8;
+export const cacheLimitPref = storage.defineItem<number>("local:cacheLimit", {
+  fallback: MAX_CACHE_MB,
+});
+
 export const modelPref = storage.defineItem<string>("local:model", { fallback: DEFAULT_MODEL });
 export const promptPref = storage.defineItem<string>("local:prompt", { fallback: DEFAULT_PROMPT });

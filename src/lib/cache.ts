@@ -1,10 +1,8 @@
 import type { Language } from "./languages";
-import { modelPref, promptPref } from "./prefs";
+import { cacheLimitPref, modelPref, promptPref } from "./prefs";
 
 /** Translations kept across page loads in storage.local, next to (and never evicting) other settings. */
 const PREFIX = "tr:";
-/** storage.local allows 10 MB without the unlimitedStorage permission. */
-const MAX_BYTES = 8 * 1024 * 1024;
 const CHECK_EVERY = 50;
 
 interface Entry {
@@ -24,6 +22,7 @@ async function storageKey(source: Language, target: Language, text: string) {
 }
 
 export async function getStored(source: Language, target: Language, text: string) {
+  if (!(await cacheLimitPref.getValue())) return;
   const key = await storageKey(source, target, text);
   const entry = (await browser.storage.local.get(key))[key] as Entry | undefined;
   return entry?.text;
@@ -35,6 +34,7 @@ export async function putStored(
   text: string,
   translation: string,
 ) {
+  if (!(await cacheLimitPref.getValue())) return;
   const key = await storageKey(source, target, text);
   await browser.storage.local.set({ [key]: { text: translation, at: Date.now() } satisfies Entry });
   if (++writes % CHECK_EVERY === 0) await evict();
@@ -42,12 +42,28 @@ export async function putStored(
 
 /**
  * Evicts by write time, not last use, so an old but often-read entry can go first.
- * Bump `at` on reads if that matters.
+ * Bump `at` on reads if that matters. Repeats until the cache fits, so a lowered limit (or 0) trims it right away.
  */
-async function evict() {
-  if ((await browser.storage.local.getBytesInUse(null)) < MAX_BYTES) return;
-  await browser.storage.local.remove(oldestHalf(await browser.storage.local.get(null)));
+export async function evict() {
+  const limit = (await cacheLimitPref.getValue()) * 1024 * 1024;
+  for (;;) {
+    const items = await browser.storage.local.get(null);
+    const keys = Object.keys(items).filter((key) => key.startsWith(PREFIX));
+    if (!keys.length || (await browser.storage.local.getBytesInUse(keys)) < limit) return;
+    await browser.storage.local.remove(oldestHalf(items));
+  }
 }
+
+async function cacheKeys() {
+  return Object.keys(await browser.storage.local.get(null)).filter((key) => key.startsWith(PREFIX));
+}
+
+export async function cacheUsage() {
+  const keys = await cacheKeys();
+  return { count: keys.length, bytes: await browser.storage.local.getBytesInUse(keys) };
+}
+
+export const clearCache = async () => browser.storage.local.remove(await cacheKeys());
 
 /** Keys of the older half of cached translations; other storage keys are left alone. */
 export function oldestHalf(items: Record<string, unknown>) {
