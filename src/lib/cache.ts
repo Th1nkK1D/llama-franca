@@ -1,5 +1,5 @@
 import type { Language } from "./languages";
-import { MODEL } from "./ollama";
+import { modelPref, promptPref } from "./prefs";
 
 /** Translations kept across page loads in storage.local, next to (and never evicting) other settings. */
 const PREFIX = "tr:";
@@ -15,7 +15,10 @@ interface Entry {
 let writes = 0;
 
 async function storageKey(source: Language, target: Language, text: string) {
-  const data = new TextEncoder().encode(`${MODEL}\n${source.code}>${target.code}\n${text}`);
+  const [model, prompt] = await Promise.all([modelPref.getValue(), promptPref.getValue()]);
+  const data = new TextEncoder().encode(
+    `${model}\n${prompt}\n${source.code}>${target.code}\n${text}`,
+  );
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
   return PREFIX + Array.from(hash.slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
 }

@@ -8,3 +8,15 @@ export async function getTarget() {
 }
 
 export const setTarget = (code: string) => targetPref.setValue(code);
+
+export const DEFAULT_MODEL = "translategemma:4b";
+
+// Exact template from https://ollama.com/library/translategemma.
+export const DEFAULT_PROMPT = `You are a professional {source} ({source_code}) to {target} ({target_code}) translator. Your goal is to accurately convey the meaning and nuances of the original {source} text while adhering to {target} grammar, vocabulary, and cultural sensitivities.
+Produce only the {target} translation, without any additional explanations or commentary. Please translate the following {source} text into {target}:
+
+
+{text}`;
+
+export const modelPref = storage.defineItem<string>("local:model", { fallback: DEFAULT_MODEL });
+export const promptPref = storage.defineItem<string>("local:prompt", { fallback: DEFAULT_PROMPT });

@@ -3,6 +3,6 @@
   "ignorePatterns": [],
   "svelte": true,
   "sortTailwindcss": {
-    "stylesheet": "./src/entrypoints/popup/app.css"
+    "stylesheet": "./src/assets/app.css"
   }
 }

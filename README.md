@@ -14,11 +14,12 @@ Browser extension for local LLM page translation with Ollama. Just like lingua f
 - **Cached**: translations are stored locally, so revisiting a page is instant.
 - **Progress** shown as a tint on text being translated and a badge on the toolbar icon.
 - **Fully local**: text only goes to your own Ollama server.
+- **Configurable**: pick any installed Ollama model and edit the prompt template in **Settings**, with a reset to defaults.
 
 ## Tech stack
 
 - [WXT](https://wxt.dev) (Manifest V3) with [Svelte 5](https://svelte.dev) and [Tailwind CSS v4](https://tailwindcss.com)
-- [Ollama](https://ollama.com) running [TranslateGemma](https://ollama.com/library/translategemma) (`translategemma:4b`)
+- [Ollama](https://ollama.com) running [TranslateGemma](https://ollama.com/library/translategemma) (`translategemma:4b` by default)
 - TypeScript, [Vitest](https://vitest.dev) + happy-dom
 - [oxlint](https://oxc.rs/docs/guide/usage/linter) and [oxfmt](https://oxc.rs/docs/guide/usage/formatter), run on commit via simple-git-hooks + lint-staged
 
@@ -31,6 +32,8 @@ Browser extension for local LLM page translation with Ollama. Just like lingua f
    ```sh
    ollama pull translategemma:4b
    ```
+
+   Any other installed model can be picked in **Settings**, but TranslateGemma is recommended: the default prompt is written for it, and other models may drop links and formatting.
 
 2. Allow requests from the extension by setting `OLLAMA_ORIGINS` for the Ollama server, then restart it:
 
@@ -79,6 +82,7 @@ The Safari build must be converted into an Xcode project on macOS with `xcrun sa
 
 - Click the toolbar icon, pick the languages, and press **Translate page**. Press **Show original** to stop.
 - Or right-click the page for **Translate page**, or right-click selected text for **Translate "…"**.
+- Click the gear icon in the popup to change the model or prompt template.
 
 ### Check
 
