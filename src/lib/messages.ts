@@ -9,6 +9,10 @@ export interface TranslateTextMessage {
 }
 export type TranslateTextResponse = { text: string } | { error: string };
 
+/** Content script → background: Ollama loads the model on first use (and after it idles out), which takes a while. */
+export type ModelMessage = { type: "model-loaded" } | { type: "load-model" };
+export type ModelResponse = { loaded: boolean } | { error: string };
+
 /** Content script → background: toolbar badge for the sender's tab */
 export interface BadgeMessage {
   type: "badge";
@@ -42,5 +46,6 @@ export interface PageStatus {
   target?: string;
   done: number;
   pending: number;
+  loadingModel?: boolean;
   error?: string;
 }

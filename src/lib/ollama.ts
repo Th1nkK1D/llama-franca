@@ -39,6 +39,17 @@ export async function listModels() {
   return (models as { name: string }[]).map((m) => m.name).sort();
 }
 
+export async function isModelLoaded() {
+  const [model, { models = [] }] = await Promise.all([modelPref.getValue(), request("/api/ps")]);
+  return (models as { name: string }[]).some((m) => m.name === model);
+}
+
+/** A generate request without a prompt only loads the model into memory. */
+export async function loadModel() {
+  const model = await modelPref.getValue();
+  await request("/api/generate", { method: "POST", body: JSON.stringify({ model }) }, model);
+}
+
 export async function checkSetup() {
   try {
     const [model, models] = await Promise.all([modelPref.getValue(), listModels()]);

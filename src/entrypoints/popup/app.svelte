@@ -121,6 +121,8 @@
 
   {#if error}
     <p class="text-red-600 dark:text-red-400">{error}</p>
+  {:else if status?.loadingModel}
+    <p class="text-gray-500">Loading model, the first translation takes a while…</p>
   {:else if status?.state === "translating"}
     <p class="text-gray-500">Translating… {status.done} done, {status.pending} queued</p>
   {:else if status?.state === "translated"}

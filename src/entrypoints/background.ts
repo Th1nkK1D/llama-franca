@@ -1,12 +1,14 @@
 import type {
   BadgeMessage,
+  ModelMessage,
+  ModelResponse,
   PageMessage,
   TabMode,
   TabModeMessage,
   TranslateTextMessage,
   TranslateTextResponse,
 } from "@/lib/messages";
-import { translate } from "@/lib/ollama";
+import { isModelLoaded, loadModel, translate } from "@/lib/ollama";
 import { getTarget, sourcePref } from "@/lib/prefs";
 
 const modeKey = (tabId: number) => `tab-mode:${tabId}`;
@@ -14,7 +16,11 @@ const modeKey = (tabId: number) => `tab-mode:${tabId}`;
 // Ollama is called from here, not the content script, so requests carry the extension origin allowed by OLLAMA_ORIGINS.
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener(
-    (message: TranslateTextMessage | BadgeMessage | TabModeMessage, sender, sendResponse) => {
+    (
+      message: TranslateTextMessage | BadgeMessage | TabModeMessage | ModelMessage,
+      sender,
+      sendResponse,
+    ) => {
       const tabId = sender.tab?.id;
       if (message?.type === "badge") {
         if (tabId === undefined) return;
@@ -38,6 +44,15 @@ export default defineBackground(() => {
           ? browser.storage.session.set({ [modeKey(tabId)]: message.mode })
           : browser.storage.session.remove(modeKey(tabId)));
         return;
+      }
+      if (message?.type === "model-loaded" || message?.type === "load-model") {
+        const loaded =
+          message.type === "model-loaded" ? isModelLoaded() : loadModel().then(() => true);
+        loaded.then(
+          (loaded) => sendResponse({ loaded } satisfies ModelResponse),
+          (error: Error) => sendResponse({ error: error.message } satisfies ModelResponse),
+        );
+        return true;
       }
       if (message?.type !== "translate-text") return;
       translate(message.source, message.target, message.text).then(

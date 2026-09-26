@@ -2,6 +2,8 @@ import { getStored, putStored } from "@/lib/cache";
 import { findLanguage, type Language } from "@/lib/languages";
 import type {
   BadgeMessage,
+  ModelMessage,
+  ModelResponse,
   PageMessage,
   PageStatus,
   TabMode,
@@ -58,6 +60,9 @@ let session: Session | undefined;
 const cache = new Map<string, Promise<string>>();
 /** Nodes already collected or inserted as a translation, so mutation scans only pick up new content. */
 const known = new WeakSet<Node>();
+let modelReady: Promise<void> | undefined;
+let loadingModel = false;
+let onLoadingModel: (() => void) | undefined;
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -117,7 +122,9 @@ async function translateSelection(
   const run = async (sourceCode: string, targetCode: string) => {
     // Languages can change while a translation is in flight; only the latest one may render.
     const id = ++latest;
-    popover.pending();
+    const notify = () => id === latest && popover.pending(loadingModel);
+    onLoadingModel = notify;
+    notify();
 
     try {
       if (!text) throw new Error("Nothing selected");
@@ -140,6 +147,8 @@ async function translateSelection(
       if (id === latest) popover.show(translation, source.code);
     } catch (error) {
       if (id === latest) popover.fail((error as Error).message);
+    } finally {
+      if (onLoadingModel === notify) onLoadingModel = undefined;
     }
   };
 
@@ -170,6 +179,7 @@ function status(): PageStatus {
     target: session.target.code,
     done: session.done,
     pending,
+    loadingModel,
     error: session.error,
   };
 }
@@ -414,7 +424,32 @@ async function prefetchLines(source: Language, target: Language, batch: Segment[
   });
 }
 
+async function askModel(type: ModelMessage["type"]) {
+  const res: ModelResponse = await browser.runtime.sendMessage({ type } satisfies ModelMessage);
+  if ("error" in res) throw new Error(res.error);
+  return res.loaded;
+}
+
+function ensureModel() {
+  modelReady ??= (async () => {
+    if (await askModel("model-loaded")) return;
+    setLoadingModel(true);
+    try {
+      await askModel("load-model");
+    } finally {
+      setLoadingModel(false);
+    }
+  })().finally(() => (modelReady = undefined));
+  return modelReady;
+}
+
+function setLoadingModel(on: boolean) {
+  loadingModel = on;
+  onLoadingModel?.();
+}
+
 async function sendTranslation(source: Language, target: Language, text: string) {
+  await ensureModel();
   const message: TranslateTextMessage = { type: "translate-text", source, target, text };
   const res: TranslateTextResponse = await browser.runtime.sendMessage(message);
   if ("error" in res) throw new Error(res.error);

@@ -18,8 +18,8 @@
   let detected = $state<string>();
   let detectedLanguage = $derived(findLanguage(detected));
 
-  export function pending() {
-    text = "Translating…";
+  export function pending(loadingModel = false) {
+    text = loadingModel ? "Loading model, the first translation takes a while…" : "Translating…";
     status = "pending";
   }
 
