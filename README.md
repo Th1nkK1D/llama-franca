@@ -81,7 +81,7 @@ The Safari build must be converted into an Xcode project on macOS with `xcrun sa
 ### Use
 
 - Click the toolbar icon, pick the languages, and press **Translate page**. Press **Show original** to stop.
-- Or right-click the page for **Translate page**, or right-click selected text for **Translate "…"**.
+- Or right-click the page for **Translate page** (**Show original** once translated), or right-click selected text for **Translate "…"**.
 - Click the gear icon in the popup to change the model or prompt template.
 
 ### Check

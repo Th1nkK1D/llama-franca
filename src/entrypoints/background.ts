@@ -10,9 +10,37 @@ import type {
   TranslateTextResponse,
 } from "@/lib/messages";
 import { isModelLoaded, loadModel, translate } from "@/lib/ollama";
-import { getTarget, sourcePref } from "@/lib/prefs";
+import { findLanguage } from "@/lib/languages";
+import { getTarget, sourcePref, targetPref } from "@/lib/prefs";
 
 const modeKey = (tabId: number) => `tab-mode:${tabId}`;
+
+async function getMode(tabId: number) {
+  const key = modeKey(tabId);
+  return ((await browser.storage.session.get(key))[key] as TabMode | undefined) ?? null;
+}
+
+const languageName = (code: string) => {
+  const language = findLanguage(code);
+  return language ? (language.label ?? language.name) : code;
+};
+
+/** Menu titles are shared by all tabs, so this follows the one in front. */
+async function syncMenu() {
+  const [[tab], source, target] = await Promise.all([
+    browser.tabs.query({ active: true, lastFocusedWindow: true }),
+    sourcePref.getValue(),
+    getTarget(),
+  ]);
+  const translating = tab?.id !== undefined && !!(await getMode(tab.id));
+  const languages = `${source === "auto" ? "" : `from ${languageName(source)} `}to ${languageName(target)}`;
+  await Promise.all([
+    browser.contextMenus.update("translate-page", {
+      title: translating ? "Show original" : `Translate page ${languages}`,
+    }),
+    browser.contextMenus.update("translate-selection", { title: `Translate "%s" ${languages}` }),
+  ]).catch(() => {});
+}
 
 // Ollama is called from here, not the content script, so requests carry the extension origin allowed by OLLAMA_ORIGINS.
 export default defineBackground(() => {
@@ -34,9 +62,7 @@ export default defineBackground(() => {
       }
       if (message?.type === "get-tab-mode") {
         if (tabId === undefined) return;
-        browser.storage.session
-          .get(modeKey(tabId))
-          .then((items) => sendResponse((items[modeKey(tabId)] as TabMode | undefined) ?? null));
+        getMode(tabId).then(sendResponse);
         return true;
       }
       if (message?.type === "set-tab-mode") {
@@ -75,9 +101,18 @@ export default defineBackground(() => {
       title: 'Translate "%s"',
       contexts: ["selection"],
     });
+    void syncMenu();
   });
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     if (tab?.id === undefined) return;
+    if (info.menuItemId === "translate-page" && (await getMode(tab.id))) {
+      const restore: PageMessage = { type: "restore-page" };
+      // Without a content script (the extension was reloaded) only the stale mode is left to clear.
+      await browser.tabs
+        .sendMessage(tab.id, restore)
+        .catch(() => browser.storage.session.remove(modeKey(tab.id!)));
+      return;
+    }
     const [source, target] = await Promise.all([sourcePref.getValue(), getTarget()]);
     const message: PageMessage =
       info.menuItemId === "translate-page"
@@ -94,11 +129,16 @@ export default defineBackground(() => {
     if (info.status === "loading") void browser.action.setBadgeText({ tabId, text: "" });
     if (info.status !== "complete") return;
     // activeTab access ends when the tab leaves the granted origin, which ends translating too.
-    const key = modeKey(tabId);
-    if (!(await browser.storage.session.get(key))[key]) return;
-    await ensureContentScript(tabId).catch(() => browser.storage.session.remove(key));
+    if (!(await getMode(tabId))) return;
+    await ensureContentScript(tabId).catch(() => browser.storage.session.remove(modeKey(tabId)));
   });
   browser.tabs.onRemoved.addListener(
     (tabId) => void browser.storage.session.remove(modeKey(tabId)),
   );
+
+  browser.storage.session.onChanged.addListener(() => void syncMenu());
+  browser.tabs.onActivated.addListener(() => void syncMenu());
+  browser.windows.onFocusChanged.addListener(() => void syncMenu());
+  sourcePref.watch(() => void syncMenu());
+  targetPref.watch(() => void syncMenu());
 });
