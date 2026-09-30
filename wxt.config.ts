@@ -11,10 +11,18 @@ export default defineConfig({
   modules: ["@wxt-dev/module-svelte"],
   manifest: {
     name: "Llama Franca",
-    permissions: ["storage", "contextMenus"],
+    permissions: ["storage", "contextMenus", "activeTab", "scripting"],
     host_permissions: ["http://localhost:11434/*"],
     action: { default_icon: actionIcon },
     browser_action: { default_icon: actionIcon },
+  },
+  hooks: {
+    // The runtime-registered content script has no `matches`, so WXT exposes its popover CSS to no page.
+    "build:manifestGenerated": (_wxt, manifest) => {
+      for (const entry of manifest.web_accessible_resources ?? []) {
+        if (typeof entry === "object") entry.matches = ["<all_urls>"];
+      }
+    },
   },
   vite: () => ({
     plugins: [tailwindcss()],

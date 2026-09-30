@@ -1,6 +1,7 @@
 <script lang="ts">
   import Button from "@/lib/components/button.svelte";
   import LanguageOptions from "@/lib/components/language-options.svelte";
+  import { ensureContentScript } from "@/lib/content-script";
   import { findLanguage } from "@/lib/languages";
   import type { PageMessage, PageStatus } from "@/lib/messages";
   import { checkSetup } from "@/lib/ollama";
@@ -27,11 +28,10 @@
   async function send(message: PageMessage) {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     try {
+      if (message.type === "translate-page") await ensureContentScript(tab!.id!);
       return (await browser.tabs.sendMessage(tab!.id!, message)) as PageStatus;
     } catch {
-      throw new Error(
-        "Can't translate this page. If it was open before the extension loaded, reload it.",
-      );
+      throw new Error("Can't translate this page.");
     }
   }
 

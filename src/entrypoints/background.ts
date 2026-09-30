@@ -1,3 +1,4 @@
+import { ensureContentScript } from "@/lib/content-script";
 import type {
   BadgeMessage,
   ModelMessage,
@@ -82,13 +83,20 @@ export default defineBackground(() => {
       info.menuItemId === "translate-page"
         ? { type: "translate-page", source, target }
         : { type: "translate-selection", text: info.selectionText ?? "", source, target };
-    // Fails on pages without the content script (browser pages, tabs opened before install).
-    browser.tabs.sendMessage(tab.id, message).catch(() => {});
+    // Fails on pages extensions can't script, like browser pages.
+    ensureContentScript(tab.id)
+      .then(() => browser.tabs.sendMessage(tab.id!, message))
+      .catch(() => {});
   });
 
-  // A full page load kills the content script before it can clear its badge.
-  browser.tabs.onUpdated.addListener((tabId, info) => {
+  browser.tabs.onUpdated.addListener(async (tabId, info) => {
+    // A full page load kills the content script before it can clear its badge.
     if (info.status === "loading") void browser.action.setBadgeText({ tabId, text: "" });
+    if (info.status !== "complete") return;
+    // activeTab access ends when the tab leaves the granted origin, which ends translating too.
+    const key = modeKey(tabId);
+    if (!(await browser.storage.session.get(key))[key]) return;
+    await ensureContentScript(tabId).catch(() => browser.storage.session.remove(key));
   });
   browser.tabs.onRemoved.addListener(
     (tabId) => void browser.storage.session.remove(modeKey(tabId)),

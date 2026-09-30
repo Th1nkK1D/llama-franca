@@ -65,7 +65,7 @@ let loadingModel = false;
 let onLoadingModel: (() => void) | undefined;
 
 export default defineContentScript({
-  matches: ["<all_urls>"],
+  registration: "runtime",
   // Content script CSS (the popover's Svelte styles) goes into the popover's shadow root, not the page.
   cssInjectionMode: "ui",
   main(ctx) {
