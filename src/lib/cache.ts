@@ -17,8 +17,11 @@ async function storageKey(source: Language, target: Language, text: string) {
   const data = new TextEncoder().encode(
     `${model}\n${prompt}\n${source.code}>${target.code}\n${text}`,
   );
+  // In a Firefox content script the hash belongs to the page, so methods like `slice` that read `constructor` are denied.
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
-  return PREFIX + Array.from(hash.slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
+  return (
+    PREFIX + Array.from({ length: 16 }, (_, i) => hash[i]!.toString(16).padStart(2, "0")).join("")
+  );
 }
 
 export async function getStored(source: Language, target: Language, text: string) {
