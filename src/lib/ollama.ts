@@ -15,7 +15,9 @@ export function buildPrompt(template: string, source: Language, target: Language
 }
 
 const UNREACHABLE = `Ollama is not reachable at ${OLLAMA_URL}. Is it running?`;
-const FORBIDDEN = "Ollama rejected the extension origin, set OLLAMA_ORIGINS=chrome-extension://*";
+/** chrome-extension://* or moz-extension://*, whichever browser this runs in. */
+const forbidden = () =>
+  `Ollama rejected the extension origin, set OLLAMA_ORIGINS=${new URL(browser.runtime.getURL("/")).protocol}//*`;
 const missingModel = (model: string) =>
   `Model ${model} isn't installed. Run: ollama pull ${model}, or pick another in Settings.`;
 
@@ -27,7 +29,7 @@ async function request(path: string, init?: RequestInit, model?: string) {
     throw new Error(UNREACHABLE);
   }
   const body = await res.json().catch(() => ({}));
-  if (res.status === 403) throw new Error(FORBIDDEN);
+  if (res.status === 403) throw new Error(forbidden());
   if (res.status === 404 && model && /model/i.test(body.error ?? ""))
     throw new Error(missingModel(model));
   if (!res.ok) throw new Error(body.error ?? `Ollama responded ${res.status}`);

@@ -78,7 +78,7 @@ In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load Temporary
 
 The Safari build must be converted into an Xcode project on macOS with `xcrun safari-web-extension-packager dist/safari-mv2` before it can be installed.
 
-> Tested on Chromium ([Helium](https://helium.computer)). The Firefox and Safari builds are untested.
+> Tested on Chromium and Firefox. The Safari build is untested.
 
 ### Use
 
