@@ -68,6 +68,8 @@ export async function translate(source: Language, target: Language, text: string
       body: JSON.stringify({
         model,
         stream: false,
+        // Greedy decoding keeps markers intact and translations repeatable; the cap stops repetition loops.
+        options: { temperature: 0, num_predict: text.length * 2 + 64 },
         messages: [{ role: "user", content: buildPrompt(template, source, target, text) }],
       }),
     },

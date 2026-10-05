@@ -43,6 +43,8 @@ Browser extension for local LLM page translation with Ollama. Just like lingua f
 
    Use `moz-extension://*` for Firefox. The extension expects Ollama at `http://localhost:11434`.
 
+   Optionally set `OLLAMA_NUM_PARALLEL=2` too, so the extension's two concurrent requests run in parallel instead of queueing. Each extra slot only adds its context memory, the model weights are shared.
+
 ### Run in development
 
 ```sh
