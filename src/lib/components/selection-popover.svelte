@@ -1,15 +1,16 @@
 <script lang="ts">
   import LanguageOptions from "./language-options.svelte";
   import { findLanguage } from "../languages";
+  import { LOADING_MODEL } from "../messages";
 
   let {
-    source = $bindable("auto"),
-    target = $bindable("en"),
+    source = $bindable(),
+    target = $bindable(),
     onchange,
     onclose,
   }: {
-    source?: string;
-    target?: string;
+    source: string;
+    target: string;
     onchange: (source: string, target: string) => void;
     onclose: () => void;
   } = $props();
@@ -20,7 +21,7 @@
   let detectedLanguage = $derived(findLanguage(detected));
 
   export function pending(loadingModel = false) {
-    text = loadingModel ? "Loading model, the first translation takes a while…" : "Translating…";
+    text = loadingModel ? LOADING_MODEL : "Translating…";
     status = "pending";
   }
 

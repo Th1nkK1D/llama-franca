@@ -1,32 +1,30 @@
-import { getStored, putStored } from "@/lib/cache";
-import { findLanguage, type Language } from "@/lib/languages";
+import { displayName, findLanguage, type Language } from "@/lib/languages";
 import type {
   BadgeMessage,
-  ModelMessage,
-  ModelResponse,
   PageMessage,
   PageStatus,
   TabMode,
   TabModeMessage,
-  TranslateTextMessage,
-  TranslateTextResponse,
 } from "@/lib/messages";
 import { showPopover } from "@/lib/popover";
-import { setTarget, sourcePref } from "@/lib/prefs";
+import { modelPref, promptPref, sourcePref, targetPref } from "@/lib/prefs";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { buildNodes, collectSegments, plainText, swap, type Segment } from "@/lib/segments";
+import {
+  clearTranslations,
+  isLoadingModel,
+  prefetchLines,
+  requestTranslation,
+  watchLoadingModel,
+} from "@/lib/translator";
 
 const CONCURRENCY = 2;
-/** Blocks up to this many characters are grouped; longer ones get their own request and language check. */
 const SHORT_TEXT = 40;
 const BATCH_LINES = 16;
+const SAMPLE_LENGTH = 2000;
 const MAIN_CONTENT = "main, article, [role=main]";
-/** Wait for added content to settle before scanning it. */
 const SCAN_DELAY = 300;
-/**
- * Tints text while its translation is in flight (style: PENDING_STYLE). A highlight marks the block's own
- * nodes, not its parent, since blocks split by `<br>` share one parent.
- */
+/** Marks each block's own nodes, not its parent, since blocks split by `<br>` share one parent. */
 let pendingHighlight: Highlight;
 const pendingRanges = new WeakMap<Segment, Range>();
 /**
@@ -49,7 +47,6 @@ interface Session {
   observer: IntersectionObserver;
   /** False until the observer's first callback queues the visible blocks. */
   observed: boolean;
-  /** Picks up content added after the page was scanned (infinite scroll, SPA navigation). */
   mutations: MutationObserver;
   scanRoots: Set<Element>;
   scanTimer?: ReturnType<typeof setTimeout>;
@@ -57,12 +54,8 @@ interface Session {
 }
 
 let session: Session | undefined;
-const cache = new Map<string, Promise<string>>();
 /** Nodes already collected or inserted as a translation, so mutation scans only pick up new content. */
 const known = new WeakSet<Node>();
-let modelReady: Promise<void> | undefined;
-let loadingModel = false;
-let onLoadingModel: (() => void) | undefined;
 
 export default defineContentScript({
   registration: "runtime",
@@ -74,6 +67,8 @@ export default defineContentScript({
     const pendingSheet = new CSSStyleSheet();
     pendingSheet.replaceSync(PENDING_STYLE);
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, pendingSheet];
+    modelPref.watch(clearTranslations);
+    promptPref.watch(clearTranslations);
     // SPA navigation keeps this script alive: keep translating (new content arrives as mutations) but
     // restart the count and forget the old page's blocks. Hash jumps stay on the same page.
     ctx.addEventListener(window, "wxt:locationchange", ({ newUrl, oldUrl }) => {
@@ -111,8 +106,8 @@ export default defineContentScript({
 async function translateSelection(
   ctx: ContentScriptContext,
   menuText: string,
-  sourceCode: string,
-  targetCode: string,
+  initialSource: string,
+  initialTarget: string,
 ) {
   const selection = getSelection();
   const text = (selection?.toString() || menuText).trim();
@@ -122,21 +117,18 @@ async function translateSelection(
   const run = async (sourceCode: string, targetCode: string) => {
     // Languages can change while a translation is in flight; only the latest one may render.
     const id = ++latest;
-    const notify = () => id === latest && popover.pending(loadingModel);
-    onLoadingModel = notify;
+    const notify = () => id === latest && popover.pending(isLoadingModel());
+    const unwatch = watchLoadingModel(notify);
     notify();
 
     try {
       if (!text) throw new Error("Nothing selected");
-      const target = findLanguage(targetCode);
-      if (!target) throw new Error(`Unsupported target language: ${targetCode}`);
-
+      const target = findTarget(targetCode);
       const source =
         sourceCode === "auto"
           ? ((await detect(text)) ??
             session?.source ??
-            (await detect(document.body.innerText.slice(0, 2000))) ??
-            findLanguage(document.documentElement.lang))
+            (await pageLanguage(document.body.innerText)))
           : findLanguage(sourceCode);
 
       if (!source) throw new Error("Couldn't detect the language, pick a source language");
@@ -148,20 +140,26 @@ async function translateSelection(
     } catch (error) {
       if (id === latest) popover.fail((error as Error).message);
     } finally {
-      if (onLoadingModel === notify) onLoadingModel = undefined;
+      unwatch();
     }
   };
 
   const popover = await showPopover(ctx, anchor, {
-    source: sourceCode,
-    target: targetCode,
+    source: initialSource,
+    target: initialTarget,
     onchange: (source, target) => {
       void sourcePref.setValue(source);
-      void setTarget(target);
+      void targetPref.setValue(target);
       void run(source, target);
     },
   });
-  await run(sourceCode, targetCode);
+  await run(initialSource, initialTarget);
+}
+
+function findTarget(code: string) {
+  const target = findLanguage(code);
+  if (!target) throw new Error(`Unsupported target language: ${code}`);
+  return target;
 }
 
 function setTabMode(mode: TabMode | null) {
@@ -179,38 +177,34 @@ function status(): PageStatus {
     target: session.target.code,
     done: session.done,
     pending,
-    loadingModel,
+    loadingModel: isLoadingModel(),
     error: session.error,
   };
 }
 
-/** Toolbar badge: blocks left while translating, target language when done, "!" on error. */
 function report() {
-  const { state, pending, error } = status();
-  const text = error
-    ? "!"
-    : state === "translating"
-      ? String(pending || "…")
-      : state === "translated"
-        ? session!.target.code.split("-")[0]!.toUpperCase()
-        : "";
+  const { state, pending, target, error } = status();
+  let text = "";
+  if (error) text = "!";
+  else if (state === "translating") text = String(pending || "…");
+  else if (state === "translated") text = target!.split("-")[0]!.toUpperCase();
   const message: BadgeMessage = { type: "badge", text, error: !!error };
   browser.runtime.sendMessage(message).catch(() => {});
 }
 
 async function start(sourceCode: string, targetCode: string) {
   restore();
-  const target = findLanguage(targetCode);
-  if (!target) throw new Error(`Unsupported target language: ${targetCode}`);
+  const target = findTarget(targetCode);
 
   const segments = collectSegments(document.body);
   if (!segments.length) throw new Error("Nothing to translate on this page");
 
-  const source = sourceCode === "auto" ? await detectLanguage(segments) : findLanguage(sourceCode);
+  const source =
+    sourceCode === "auto"
+      ? await pageLanguage(segments.map((s) => plainText(s.source)).join("\n"))
+      : findLanguage(sourceCode);
   if (!source) throw new Error("Couldn't detect the page language, pick a source language");
-  if (source.code === target.code) {
-    throw new Error(`Page is already in ${target.label ?? target.name}`);
-  }
+  if (source.code === target.code) throw new Error(`Page is already in ${displayName(target)}`);
 
   const current: Session = {
     requestedSource: sourceCode,
@@ -235,7 +229,6 @@ async function start(sourceCode: string, targetCode: string) {
   report();
 }
 
-/** Track segments and translate each once its parent scrolls near the viewport. */
 function addSegments(s: Session, segments: Segment[]) {
   for (const segment of segments) {
     segment.original.forEach((node) => known.add(node));
@@ -289,7 +282,6 @@ function scan(s: Session) {
   s.scanRoots.clear();
 }
 
-/** After SPA navigation: drop blocks the old page removed and restart the count. */
 function forgetDetached(s: Session) {
   const attached = (seg: Segment) => (seg.translated ?? seg.original).some((n) => n.isConnected);
   s.segments = s.segments.filter(attached);
@@ -311,12 +303,10 @@ async function detect(text: string) {
     : undefined;
 }
 
-async function detectLanguage(segments: Segment[]) {
-  const sample = segments
-    .map((s) => plainText(s.source))
-    .join("\n")
-    .slice(0, 2000);
-  return (await detect(sample)) ?? findLanguage(document.documentElement.lang);
+async function pageLanguage(text: string) {
+  return (
+    (await detect(text.slice(0, SAMPLE_LENGTH))) ?? findLanguage(document.documentElement.lang)
+  );
 }
 
 const isShort = (segment: Segment) => plainText(segment.source).length <= SHORT_TEXT;
@@ -359,7 +349,14 @@ function setPending(segment: Segment, on: boolean) {
 }
 
 async function translateBatch(s: Session, batch: Segment[]) {
-  const prefetched = batch.length > 1 ? prefetchLines(s.source, s.target, batch) : undefined;
+  const prefetched =
+    batch.length > 1
+      ? prefetchLines(
+          s.source,
+          s.target,
+          batch.map((segment) => segment.source),
+        )
+      : undefined;
   await Promise.all(
     batch.map(async (segment) => {
       try {
@@ -394,82 +391,6 @@ async function translateSegment(s: Session, segment: Segment) {
   swap(segment.original, nodes);
   segment.translated = nodes;
   s.done++;
-}
-
-const cacheKey = (source: Language, target: Language, text: string) =>
-  `${source.code}>${target.code}\n${text}`;
-
-/** Translate uncached lines in one request and seed the cache; on a line-count mismatch each falls back to its own request. */
-async function prefetchLines(source: Language, target: Language, batch: Segment[]) {
-  const unseen = [
-    ...new Set(
-      batch.map((s) => s.source).filter((text) => !cache.has(cacheKey(source, target, text))),
-    ),
-  ];
-  const stored = await Promise.all(unseen.map((text) => getStored(source, target, text)));
-  const missing = unseen.filter((text, i) => {
-    const hit = stored[i];
-    if (hit !== undefined) cache.set(cacheKey(source, target, text), Promise.resolve(hit));
-    return hit === undefined;
-  });
-  if (missing.length < 2) return;
-  const lines = (await sendTranslation(source, target, missing.join("\n")))
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length !== missing.length) return;
-  missing.forEach((text, i) => {
-    cache.set(cacheKey(source, target, text), Promise.resolve(lines[i]!));
-    void putStored(source, target, text, lines[i]!);
-  });
-}
-
-async function askModel(type: ModelMessage["type"]) {
-  const res: ModelResponse = await browser.runtime.sendMessage({ type } satisfies ModelMessage);
-  if ("error" in res) throw new Error(res.error);
-  return res.loaded;
-}
-
-function ensureModel() {
-  modelReady ??= (async () => {
-    if (await askModel("model-loaded")) return;
-    setLoadingModel(true);
-    try {
-      await askModel("load-model");
-    } finally {
-      setLoadingModel(false);
-    }
-  })().finally(() => (modelReady = undefined));
-  return modelReady;
-}
-
-function setLoadingModel(on: boolean) {
-  loadingModel = on;
-  onLoadingModel?.();
-}
-
-async function sendTranslation(source: Language, target: Language, text: string) {
-  await ensureModel();
-  const message: TranslateTextMessage = { type: "translate-text", source, target, text };
-  const res: TranslateTextResponse = await browser.runtime.sendMessage(message);
-  if ("error" in res) throw new Error(res.error);
-  return res.text;
-}
-
-function requestTranslation(source: Language, target: Language, text: string) {
-  const key = cacheKey(source, target, text);
-  let result = cache.get(key);
-  if (!result) {
-    result = getStored(source, target, text).then(async (stored) => {
-      if (stored !== undefined) return stored;
-      const translation = await sendTranslation(source, target, text);
-      void putStored(source, target, text, translation);
-      return translation;
-    });
-    result.catch(() => cache.delete(key));
-    cache.set(key, result);
-  }
-  return result;
 }
 
 function restore() {

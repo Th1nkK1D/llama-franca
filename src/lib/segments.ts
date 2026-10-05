@@ -108,7 +108,8 @@ function isWordless(el: Element) {
   return EMBEDDED.has(el.localName) || (INLINE.has(el.localName) && !hasLetters(el.textContent));
 }
 
-const inlineCache = new WeakMap<Element, boolean>();
+/** Reset per scan, since an element can gain block children between mutation scans. */
+let inlineCache = new WeakMap<Element, boolean>();
 
 function isInline(el: Element): boolean {
   if (isWordless(el) || VERBATIM.has(el.localName)) return true;
@@ -120,7 +121,7 @@ function isInline(el: Element): boolean {
   return result;
 }
 
-function isEditable(el: Element) {
+function isExcluded(el: Element) {
   return (el as HTMLElement).isContentEditable || el.getAttribute("translate") === "no";
 }
 
@@ -129,9 +130,10 @@ const SKIP_ANCESTOR = [...SKIP, "[translate=no]"].join(",");
 export function collectSegments(root: Element): Segment[] {
   const segments: Segment[] = [];
   if (root.parentElement?.closest(SKIP_ANCESTOR)) return segments;
+  inlineCache = new WeakMap();
 
   const visit = (el: Element) => {
-    if (SKIP.has(el.localName) || isEditable(el)) return;
+    if (SKIP.has(el.localName) || isExcluded(el)) return;
     let run: ChildNode[] = [];
     const flush = () => {
       const [only, ...more] = run.filter((node) =>
@@ -233,7 +235,7 @@ function fill(el: Element, text: string) {
   return clone;
 }
 
-/** Rebuild DOM nodes from a marked-up translation. Markers the model dropped lose their element but keep their words. */
+/** Markers the model dropped lose their element but keep their words. */
 export function buildNodes(segment: Segment, translation: string): ChildNode[] {
   const fragment = document.createDocumentFragment();
   fragment.append(...segment.leading.map((el) => el.cloneNode(true)));
@@ -285,7 +287,8 @@ function placeTrailing(
     }
     total += child.textContent?.length ?? 0;
   }
-  sentenceEnds.push({ offset: 0, pos: total });
+  const end: Spot = { offset: 0, pos: total };
+  sentenceEnds.push(end);
 
   const nearest = (spots: Spot[], target: number, within = Infinity) => {
     let best: Spot | undefined;
@@ -307,14 +310,12 @@ function placeTrailing(
       continue;
     }
     const target = item.ratio * total;
-    const spot = nearest(sentenceEnds, target, total * 0.2) ??
-      nearest(gaps, target) ?? {
-        offset: 0,
-        pos: total,
-      };
+    const spot = nearest(sentenceEnds, target, total * 0.2) ?? nearest(gaps, target) ?? end;
     placed.push({ spot, node });
   }
 
+  // Insert back to front so earlier offsets stay valid. Each insert at a shared spot lands before the
+  // previous one, so reverse first (the sort is stable) to keep those in source order.
   const atEnd: Node[] = [];
   for (const { spot, node } of placed.reverse().sort((a, b) => b.spot.pos - a.spot.pos)) {
     if (spot.text) spot.text.splitText(spot.offset).before(node);

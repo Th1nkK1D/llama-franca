@@ -43,6 +43,8 @@ export const LANGUAGES: Language[] = [
   { code: "vi", name: "Vietnamese" },
 ];
 
+export const displayName = (language: Language) => language.label ?? language.name;
+
 /** Map a detector / `<html lang>` code like "en-US", "zh-TW", "iw" to a supported language. */
 export function findLanguage(code: string | undefined): Language | undefined {
   if (!code) return;

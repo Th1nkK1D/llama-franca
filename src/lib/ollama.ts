@@ -1,7 +1,7 @@
 import type { Language } from "./languages";
 import { modelPref, promptPref } from "./prefs";
 
-export const OLLAMA_URL = "http://localhost:11434";
+const OLLAMA_URL = "http://localhost:11434";
 
 export function buildPrompt(template: string, source: Language, target: Language, text: string) {
   const values: Record<string, string> = {
@@ -21,7 +21,7 @@ const forbidden = () =>
 const missingModel = (model: string) =>
   `Model ${model} isn't installed. Run: ollama pull ${model}, or pick another in Settings.`;
 
-async function request(path: string, init?: RequestInit, model?: string) {
+async function request<T = unknown>(path: string, init?: RequestInit, model?: string): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${OLLAMA_URL}${path}`, init);
@@ -36,14 +36,21 @@ async function request(path: string, init?: RequestInit, model?: string) {
   return body;
 }
 
+interface Models {
+  models?: { name: string }[];
+}
+
 export async function listModels() {
-  const { models = [] } = await request("/api/tags");
-  return (models as { name: string }[]).map((m) => m.name).sort();
+  const { models = [] } = await request<Models>("/api/tags");
+  return models.map((m) => m.name).sort();
 }
 
 export async function isModelLoaded() {
-  const [model, { models = [] }] = await Promise.all([modelPref.getValue(), request("/api/ps")]);
-  return (models as { name: string }[]).some((m) => m.name === model);
+  const [model, { models = [] }] = await Promise.all([
+    modelPref.getValue(),
+    request<Models>("/api/ps"),
+  ]);
+  return models.some((m) => m.name === model);
 }
 
 /** A generate request without a prompt only loads the model into memory. */
@@ -63,7 +70,7 @@ export async function checkSetup() {
 
 export async function translate(source: Language, target: Language, text: string) {
   const [model, template] = await Promise.all([modelPref.getValue(), promptPref.getValue()]);
-  const body = await request(
+  const body = await request<{ message?: { content: string } }>(
     "/api/chat",
     {
       method: "POST",
@@ -77,5 +84,5 @@ export async function translate(source: Language, target: Language, text: string
     },
     model,
   );
-  return (body.message?.content ?? "").trim() as string;
+  return (body.message?.content ?? "").trim();
 }

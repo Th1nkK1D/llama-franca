@@ -2,15 +2,16 @@ import { ensureContentScript } from "@/lib/content-script";
 import type {
   BadgeMessage,
   ModelMessage,
-  ModelResponse,
+  ModelResult,
   PageMessage,
+  Reply,
   TabMode,
   TabModeMessage,
   TranslateTextMessage,
-  TranslateTextResponse,
+  TranslateTextResult,
 } from "@/lib/messages";
 import { isModelLoaded, loadModel, translate } from "@/lib/ollama";
-import { findLanguage } from "@/lib/languages";
+import { displayName, findLanguage } from "@/lib/languages";
 import { getTarget, sourcePref, targetPref } from "@/lib/prefs";
 
 const modeKey = (tabId: number) => `tab-mode:${tabId}`;
@@ -22,7 +23,7 @@ async function getMode(tabId: number) {
 
 const languageName = (code: string) => {
   const language = findLanguage(code);
-  return language ? (language.label ?? language.name) : code;
+  return language ? displayName(language) : code;
 };
 
 /** Menu titles are shared by all tabs, so this follows the one in front. */
@@ -42,6 +43,12 @@ async function syncMenu() {
   ]).catch(() => {});
 }
 
+/** Returns true to keep the message channel open until it answers. */
+function reply<T>(result: Promise<T>, sendResponse: (response: Reply<T>) => void) {
+  result.then(sendResponse, (error: Error) => sendResponse({ error: error.message }));
+  return true;
+}
+
 // Ollama is called from here, not the content script, so requests carry the extension origin allowed by OLLAMA_ORIGINS.
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener(
@@ -51,42 +58,41 @@ export default defineBackground(() => {
       sendResponse,
     ) => {
       const tabId = sender.tab?.id;
-      if (message?.type === "badge") {
-        if (tabId === undefined) return;
-        void browser.action.setBadgeText({ tabId, text: message.text });
-        void browser.action.setBadgeBackgroundColor({
-          tabId,
-          color: message.error ? "#dc2626" : "#2563eb",
-        });
-        return;
+      switch (message?.type) {
+        case "badge":
+          if (tabId === undefined) return;
+          void browser.action.setBadgeText({ tabId, text: message.text });
+          void browser.action.setBadgeBackgroundColor({
+            tabId,
+            color: message.error ? "#dc2626" : "#2563eb",
+          });
+          return;
+        case "get-tab-mode":
+          if (tabId === undefined) return;
+          getMode(tabId).then(sendResponse);
+          return true;
+        case "set-tab-mode":
+          if (tabId === undefined) return;
+          void (message.mode
+            ? browser.storage.session.set({ [modeKey(tabId)]: message.mode })
+            : browser.storage.session.remove(modeKey(tabId)));
+          return;
+        case "model-loaded":
+          return reply<ModelResult>(
+            isModelLoaded().then((loaded) => ({ loaded })),
+            sendResponse,
+          );
+        case "load-model":
+          return reply<ModelResult>(
+            loadModel().then(() => ({ loaded: true })),
+            sendResponse,
+          );
+        case "translate-text":
+          return reply<TranslateTextResult>(
+            translate(message.source, message.target, message.text).then((text) => ({ text })),
+            sendResponse,
+          );
       }
-      if (message?.type === "get-tab-mode") {
-        if (tabId === undefined) return;
-        getMode(tabId).then(sendResponse);
-        return true;
-      }
-      if (message?.type === "set-tab-mode") {
-        if (tabId === undefined) return;
-        void (message.mode
-          ? browser.storage.session.set({ [modeKey(tabId)]: message.mode })
-          : browser.storage.session.remove(modeKey(tabId)));
-        return;
-      }
-      if (message?.type === "model-loaded" || message?.type === "load-model") {
-        const loaded =
-          message.type === "model-loaded" ? isModelLoaded() : loadModel().then(() => true);
-        loaded.then(
-          (loaded) => sendResponse({ loaded } satisfies ModelResponse),
-          (error: Error) => sendResponse({ error: error.message } satisfies ModelResponse),
-        );
-        return true;
-      }
-      if (message?.type !== "translate-text") return;
-      translate(message.source, message.target, message.text).then(
-        (text) => sendResponse({ text } satisfies TranslateTextResponse),
-        (error: Error) => sendResponse({ error: error.message } satisfies TranslateTextResponse),
-      );
-      return true;
     },
   );
 

@@ -1,7 +1,6 @@
 import type { Language } from "./languages";
 import { cacheLimitPref, modelPref, promptPref } from "./prefs";
 
-/** Translations kept across page loads in storage.local, next to (and never evicting) other settings. */
 const PREFIX = "tr:";
 const CHECK_EVERY = 50;
 
@@ -12,11 +11,12 @@ interface Entry {
 
 let writes = 0;
 
+export const cacheKey = (source: Language, target: Language, text: string) =>
+  `${source.code}>${target.code}\n${text}`;
+
 async function storageKey(source: Language, target: Language, text: string) {
   const [model, prompt] = await Promise.all([modelPref.getValue(), promptPref.getValue()]);
-  const data = new TextEncoder().encode(
-    `${model}\n${prompt}\n${source.code}>${target.code}\n${text}`,
-  );
+  const data = new TextEncoder().encode(`${model}\n${prompt}\n${cacheKey(source, target, text)}`);
   // In a Firefox content script the hash belongs to the page, so methods like `slice` that read `constructor` are denied.
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
   return (
@@ -51,27 +51,25 @@ export async function evict() {
   const limit = (await cacheLimitPref.getValue()) * 1024 * 1024;
   for (;;) {
     const items = await browser.storage.local.get(null);
-    const keys = Object.keys(items).filter((key) => key.startsWith(PREFIX));
+    const keys = translationKeys(items);
     if (!keys.length || (await browser.storage.local.getBytesInUse(keys)) < limit) return;
     await browser.storage.local.remove(oldestHalf(items));
   }
 }
 
-async function cacheKeys() {
-  return Object.keys(await browser.storage.local.get(null)).filter((key) => key.startsWith(PREFIX));
-}
+const translationKeys = (items: Record<string, unknown>) =>
+  Object.keys(items).filter((key) => key.startsWith(PREFIX));
 
 export async function cacheUsage() {
-  const keys = await cacheKeys();
+  const keys = translationKeys(await browser.storage.local.get(null));
   return { count: keys.length, bytes: await browser.storage.local.getBytesInUse(keys) };
 }
 
-export const clearCache = async () => browser.storage.local.remove(await cacheKeys());
+export const clearCache = async () =>
+  browser.storage.local.remove(translationKeys(await browser.storage.local.get(null)));
 
-/** Keys of the older half of cached translations; other storage keys are left alone. */
 export function oldestHalf(items: Record<string, unknown>) {
-  const entries = Object.entries(items)
-    .filter(([key]) => key.startsWith(PREFIX))
-    .sort(([, a], [, b]) => (a as Entry).at - (b as Entry).at);
-  return entries.slice(0, Math.ceil(entries.length / 2)).map(([key]) => key);
+  const at = (key: string) => (items[key] as Entry).at;
+  const keys = translationKeys(items).sort((a, b) => at(a) - at(b));
+  return keys.slice(0, Math.ceil(keys.length / 2));
 }

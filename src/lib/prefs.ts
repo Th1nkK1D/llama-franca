@@ -7,8 +7,6 @@ export async function getTarget() {
   return (await targetPref.getValue()) ?? findLanguage(browser.i18n.getUILanguage())?.code ?? "en";
 }
 
-export const setTarget = (code: string) => targetPref.setValue(code);
-
 export const DEFAULT_MODEL = "translategemma:4b";
 
 // Exact template from https://ollama.com/library/translategemma.

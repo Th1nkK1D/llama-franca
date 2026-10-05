@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Llama Franca</title>
     <meta name="manifest.type" content="browser_action" />
+    <!-- Without it Chromium draws the toolbar icon at the wrong scale on Wayland until hovered. -->
+    <meta
+      name="manifest.default_icon"
+      content="{ '16': 'icon/16.png', '32': 'icon/32.png', '48': 'icon/48.png' }"
+    />
   </head>
   <body
     class="w-80 bg-white text-sm text-gray-900 antialiased scheme-light-dark dark:bg-gray-900 dark:text-gray-100"

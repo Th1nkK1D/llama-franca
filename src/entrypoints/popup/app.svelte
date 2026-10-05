@@ -3,9 +3,9 @@
   import LanguageOptions from "@/lib/components/language-options.svelte";
   import { ensureContentScript } from "@/lib/content-script";
   import { findLanguage } from "@/lib/languages";
-  import type { PageMessage, PageStatus } from "@/lib/messages";
+  import { LOADING_MODEL, type PageMessage, type PageStatus } from "@/lib/messages";
   import { checkSetup } from "@/lib/ollama";
-  import { getTarget, setTarget, sourcePref } from "@/lib/prefs";
+  import { getTarget, sourcePref, targetPref } from "@/lib/prefs";
 
   let source = $state("auto");
   let target = $state("en");
@@ -67,7 +67,7 @@
       class="control min-w-0 flex-1"
       aria-label="Target language"
       bind:value={target}
-      onchange={() => setTarget(target)}
+      onchange={() => targetPref.setValue(target)}
     >
       <LanguageOptions />
     </select>
@@ -113,7 +113,7 @@
   {#if error}
     <p class="text-red-600 dark:text-red-400">{error}</p>
   {:else if status?.loadingModel}
-    <p class="text-gray-500">Loading model, the first translation takes a while…</p>
+    <p class="text-gray-500">{LOADING_MODEL}</p>
   {:else if status?.state === "translating"}
     <p class="text-gray-500">Translating… {status.done} done, {status.pending} queued</p>
   {:else if status?.state === "translated"}

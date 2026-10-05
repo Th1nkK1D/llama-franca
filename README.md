@@ -1,6 +1,6 @@
 <img src="src/assets/icon.svg" alt="Llama Franca icon" width="128">
 
-# LLama Franca
+# Llama Franca
 
 Browser extension for local LLM page translation with Ollama. Just like lingua franca, but llama.
 
@@ -84,7 +84,7 @@ The Safari build must be converted into an Xcode project on macOS with `xcrun sa
 
 - Click the toolbar icon, pick the languages, and press **Translate page**. Press **Show original** to stop.
 - Or right-click the page for **Translate page** (**Show original** once translated), or right-click selected text for **Translate "…"**.
-- Click the gear icon in the popup to change the model or prompt template.
+- Click the gear icon in the popup to change the model, prompt template, or cache size, or to clear the cache.
 
 ### Check
 
