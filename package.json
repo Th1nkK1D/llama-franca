@@ -2,7 +2,7 @@
   "name": "llama-franca",
   "version": "0.0.1",
   "private": true,
-  "description": "Browser extension for local LLM page translation with Ollama",
+  "description": "Translate web pages in your browser with a local LLM on Ollama",
   "license": "MIT",
   "author": "Th1nkK1D <witheep@gmail.com>",
   "type": "module",

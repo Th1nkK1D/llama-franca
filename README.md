@@ -2,19 +2,22 @@
 
 # Llama Franca
 
-Browser extension for local LLM page translation with Ollama. Just like lingua franca, but llama.
+Translate web pages in your browser with a local LLM on Ollama. Just like lingua franca, but llama.
+
+![Finnish Wikipedia page on llamas being translated to English, with the popup showing progress](docs/screenshot.png)
 
 ## Features
 
-- **Translate page** from the popup or the right-click menu. Text is replaced in place, links and formatting are kept, and **Show original** restores the page.
-- **Translate selection** from the right-click menu, shown in a popover with its own language pickers.
-- **Auto-detects** the source language, per page and per block, and skips text already in the target language.
-- **Visible text first**: blocks translate as they scroll into view, main content before menus and sidebars.
-- **Keeps up with the page**: content loaded later (infinite scroll, SPA navigation) is translated too, and a tab keeps translating across page loads on the same site until **Show original**.
-- **Cached**: translations are stored locally, so revisiting a page is instant. Its size limit (8 MB by default, 0 to disable) and a clear button are in **Settings**.
-- **Progress** shown as a tint on text being translated and a badge on the toolbar icon.
-- **Fully local**: text only goes to your own Ollama server.
-- **Configurable**: pick any installed Ollama model and edit the prompt template in **Settings**, with a reset to defaults.
+- **Private and free**: pages are translated by your own Ollama server. No account, no API key, nothing leaves your machine.
+- **Ready for TranslateGemma**: the default model and prompt are set up for [TranslateGemma](https://ollama.com/library/translategemma), an open model built for translation that keeps links and formatting in place.
+- **Translate the whole page in place**, from the toolbar or the right-click menu. Links and formatting stay intact, and _Show original_ brings the page back.
+- **Translate a selection**: right-click selected text to read its translation in a popover.
+- **Detects the language for you**, per page and per paragraph, and leaves text already in your language alone.
+- **What you're reading comes first**: text translates as it scrolls into view, main content before menus and sidebars.
+- **Keeps up as you browse**: content that loads later, like infinite scroll, is translated too, and the tab stays translated across pages on the same site.
+- **Instant on revisit**: translations are cached locally, up to 8 MB by default.
+- **Shows its progress**: text being translated is tinted, and a badge on the toolbar icon counts what's left.
+- **Make it yours**: pick any other installed Ollama model, edit the prompt, or change the cache size in _Settings_ (the gear icon in the popup).
 
 ## Tech stack
 
@@ -33,7 +36,7 @@ Browser extension for local LLM page translation with Ollama. Just like lingua f
    ollama pull translategemma:4b
    ```
 
-   Any other installed model can be picked in **Settings**, but TranslateGemma is recommended: the default prompt is written for it, and other models may drop links and formatting.
+   Any other installed model can be picked in _Settings_, but TranslateGemma is recommended: the default prompt is written for it, and other models may drop links and formatting.
 
 2. Allow requests from the extension by setting `OLLAMA_ORIGINS` for the Ollama server, then restart it:
 
@@ -72,19 +75,13 @@ pnpm build:firefox  # → dist/firefox-mv2
 pnpm build:safari   # → dist/safari-mv2
 ```
 
-In a Chromium browser, open `chrome://extensions`, enable **Developer mode**, and **Load unpacked** the `dist/chrome-mv3` folder.
+In a Chromium browser, open `chrome://extensions`, enable _Developer mode_, and _Load unpacked_ the `dist/chrome-mv3` folder.
 
-In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist/firefox-mv2/manifest.json`. It stays loaded until Firefox restarts. To keep it installed, set `xpinstall.signatures.required` to `false` in `about:config` (Developer Edition, Nightly, or ESR only), run `pnpm zip:firefox`, and install the zip from `about:addons` → gear icon → **Install Add-on From File…**.
+In Firefox, open `about:debugging#/runtime/this-firefox`, click _Load Temporary Add-on…_, and select `dist/firefox-mv2/manifest.json`. It stays loaded until Firefox restarts. To keep it installed, set `xpinstall.signatures.required` to `false` in `about:config` (Developer Edition, Nightly, or ESR only), run `pnpm zip:firefox`, and install the zip from `about:addons` → gear icon → _Install Add-on From File…_.
 
 The Safari build must be converted into an Xcode project on macOS with `xcrun safari-web-extension-packager dist/safari-mv2` before it can be installed.
 
 > Tested on Chromium and Firefox. The Safari build is untested.
-
-### Use
-
-- Click the toolbar icon, pick the languages, and press **Translate page**. Press **Show original** to stop.
-- Or right-click the page for **Translate page** (**Show original** once translated), or right-click selected text for **Translate "…"**.
-- Click the gear icon in the popup to change the model, prompt template, or cache size, or to clear the cache.
 
 ### Check
 
