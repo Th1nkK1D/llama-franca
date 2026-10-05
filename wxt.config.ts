@@ -9,13 +9,18 @@ export default defineConfig({
   srcDir: "src",
   outDir: "dist",
   modules: ["@wxt-dev/module-svelte"],
-  manifest: {
+  manifest: ({ browser }) => ({
     name: "Llama Franca",
     permissions: ["storage", "contextMenus", "activeTab", "scripting"],
     host_permissions: ["http://localhost:11434/*"],
     action: { default_icon: actionIcon },
     browser_action: { default_icon: actionIcon },
-  },
+    ...(browser === "firefox" && {
+      browser_specific_settings: {
+        gecko: { id: "llama-franca@th1nkk1d", data_collection_permissions: { required: ["none"] } },
+      },
+    }),
+  }),
   hooks: {
     // The runtime-registered content script has no `matches`, so WXT exposes its popover CSS to no page.
     "build:manifestGenerated": (_wxt, manifest) => {
