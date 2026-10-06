@@ -19,12 +19,14 @@
     "lint": "oxlint",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
+    "toc": "doctoc README.md --title '**Contents**'",
     "test": "vitest run",
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@wxt-dev/module-svelte": "^2.0.4",
+    "doctoc": "^2.5.0",
     "happy-dom": "^20.14.5",
     "lint-staged": "^17.5.1",
     "oxfmt": "^0.70.0",
@@ -44,6 +46,7 @@
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,mts,cts,svelte}": "oxlint --fix",
+    "README.md": "doctoc --title '**Contents**'",
     "*": "oxfmt --no-error-on-unmatched-pattern"
   }
 }
