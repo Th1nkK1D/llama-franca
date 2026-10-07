@@ -14,6 +14,7 @@ export const LANGUAGES: Language[] = [
   { code: "da", name: "Danish" },
   { code: "nl", name: "Dutch" },
   { code: "en", name: "English" },
+  { code: "et", name: "Estonian" },
   { code: "fi", name: "Finnish" },
   { code: "fr", name: "French" },
   { code: "de", name: "German" },
