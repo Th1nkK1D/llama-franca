@@ -1,10 +1,15 @@
-import { findLanguage } from "./languages";
+import { findLanguage, languagesPref } from "./languages";
 
 export const sourcePref = storage.defineItem<string>("local:source", { fallback: "auto" });
 export const targetPref = storage.defineItem<string | null>("local:target", { fallback: null });
 
 export async function getTarget() {
-  return (await targetPref.getValue()) ?? findLanguage(browser.i18n.getUILanguage())?.code ?? "en";
+  return (
+    (await targetPref.getValue()) ??
+    (await findLanguage(browser.i18n.getUILanguage()))?.code ??
+    (await languagesPref.getValue())[0]?.code ??
+    "en"
+  );
 }
 
 export const DEFAULT_MODEL = "translategemma:4b";

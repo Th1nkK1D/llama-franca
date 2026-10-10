@@ -123,13 +123,13 @@ async function translateSelection(
 
     try {
       if (!text) throw new Error("Nothing selected");
-      const target = findTarget(targetCode);
+      const target = await findTarget(targetCode);
       const source =
         sourceCode === "auto"
           ? ((await detect(text)) ??
             session?.source ??
             (await pageLanguage(document.body.innerText)))
-          : findLanguage(sourceCode);
+          : await findLanguage(sourceCode);
 
       if (!source) throw new Error("Couldn't detect the language, pick a source language");
 
@@ -156,8 +156,8 @@ async function translateSelection(
   await run(initialSource, initialTarget);
 }
 
-function findTarget(code: string) {
-  const target = findLanguage(code);
+async function findTarget(code: string) {
+  const target = await findLanguage(code);
   if (!target) throw new Error(`Unsupported target language: ${code}`);
   return target;
 }
@@ -194,7 +194,7 @@ function report() {
 
 async function start(sourceCode: string, targetCode: string) {
   restore();
-  const target = findTarget(targetCode);
+  const target = await findTarget(targetCode);
 
   const segments = collectSegments(document.body);
   if (!segments.length) throw new Error("Nothing to translate on this page");
@@ -202,7 +202,7 @@ async function start(sourceCode: string, targetCode: string) {
   const source =
     sourceCode === "auto"
       ? await pageLanguage(segments.map((s) => plainText(s.source)).join("\n"))
-      : findLanguage(sourceCode);
+      : await findLanguage(sourceCode);
   if (!source) throw new Error("Couldn't detect the page language, pick a source language");
   if (source.code === target.code) throw new Error(`Page is already in ${displayName(target)}`);
 

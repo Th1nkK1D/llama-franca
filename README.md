@@ -36,7 +36,7 @@ Translate web pages in your browser with a local LLM on Ollama. Just like lingua
 - **Keeps up as you browse**: content that loads later, like infinite scroll, is translated too, and the tab stays translated across pages on the same site.
 - **Instant on revisit**: translations are cached locally, up to 8 MB by default.
 - **Shows its progress**: text being translated is tinted, and a badge on the toolbar icon counts what's left.
-- **Make it yours**: pick any other installed Ollama model, edit the prompt, or change the cache size in _Settings_ (the gear icon in the popup).
+- **Make it yours**: pick any other installed Ollama model, edit the prompt, add or remove languages, or change the cache size in _Settings_ (the gear icon in the popup).
 
 ## Usage
 

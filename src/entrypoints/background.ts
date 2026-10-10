@@ -11,7 +11,7 @@ import type {
   TranslateTextResult,
 } from "@/lib/messages";
 import { isModelLoaded, loadModel, translate } from "@/lib/ollama";
-import { displayName, findLanguage } from "@/lib/languages";
+import { displayName, findLanguage, languagesPref } from "@/lib/languages";
 import { getTarget, sourcePref, targetPref } from "@/lib/prefs";
 
 const modeKey = (tabId: number) => `tab-mode:${tabId}`;
@@ -21,8 +21,8 @@ async function getMode(tabId: number) {
   return ((await browser.storage.session.get(key))[key] as TabMode | undefined) ?? null;
 }
 
-const languageName = (code: string) => {
-  const language = findLanguage(code);
+const languageName = async (code: string) => {
+  const language = await findLanguage(code);
   return language ? displayName(language) : code;
 };
 
@@ -34,7 +34,7 @@ async function syncMenu() {
     getTarget(),
   ]);
   const translating = tab?.id !== undefined && !!(await getMode(tab.id));
-  const languages = `${source === "auto" ? "" : `from ${languageName(source)} `}to ${languageName(target)}`;
+  const languages = `${source === "auto" ? "" : `from ${await languageName(source)} `}to ${await languageName(target)}`;
   await Promise.all([
     browser.contextMenus.update("translate-page", {
       title: translating ? "Show original" : `Translate page ${languages}`,
@@ -147,4 +147,5 @@ export default defineBackground(() => {
   browser.windows.onFocusChanged.addListener(() => void syncMenu());
   sourcePref.watch(() => void syncMenu());
   targetPref.watch(() => void syncMenu());
+  languagesPref.watch(() => void syncMenu());
 });

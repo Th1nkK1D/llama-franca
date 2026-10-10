@@ -2,7 +2,6 @@
   import Button from "@/lib/components/button.svelte";
   import LanguageOptions from "@/lib/components/language-options.svelte";
   import { ensureContentScript } from "@/lib/content-script";
-  import { findLanguage } from "@/lib/languages";
   import { LOADING_MODEL, type PageMessage, type PageStatus } from "@/lib/messages";
   import { checkSetup } from "@/lib/ollama";
   import { getTarget, sourcePref, targetPref } from "@/lib/prefs";
@@ -13,7 +12,6 @@
   let actionError = $state<string>();
   let setupError = $state<string>();
   let error = $derived(actionError ?? setupError ?? status?.error);
-  let detected = $derived(findLanguage(status?.source));
   let canTranslate = $derived(
     !status ||
       status.state === "idle" ||
@@ -60,7 +58,7 @@
       bind:value={source}
       onchange={() => sourcePref.setValue(source)}
     >
-      <LanguageOptions auto detected={source === "auto" ? detected : undefined} />
+      <LanguageOptions auto detected={source === "auto" ? status?.source : undefined} />
     </select>
     <span aria-hidden="true">→</span>
     <select

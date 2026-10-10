@@ -1,6 +1,5 @@
 <script lang="ts">
   import LanguageOptions from "./language-options.svelte";
-  import { findLanguage } from "../languages";
   import { LOADING_MODEL } from "../messages";
 
   let {
@@ -18,7 +17,6 @@
   let text = $state("Translating…");
   let status = $state<"pending" | "done" | "error">("pending");
   let detected = $state<string>();
-  let detectedLanguage = $derived(findLanguage(detected));
 
   export function pending(loadingModel = false) {
     text = loadingModel ? LOADING_MODEL : "Translating…";
@@ -45,7 +43,7 @@
       bind:value={source}
       onchange={() => onchange(source, target)}
     >
-      <LanguageOptions auto detected={detectedLanguage} />
+      <LanguageOptions auto {detected} />
     </select>
     <span aria-hidden="true">→</span>
     <select

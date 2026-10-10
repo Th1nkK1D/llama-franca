@@ -2,6 +2,7 @@
   import Button from "@/lib/components/button.svelte";
   import { cacheUsage, clearCache, evict } from "@/lib/cache";
   import Field from "@/lib/components/field.svelte";
+  import { DEFAULT_LANGUAGES, displayName, languagesPref, type Language } from "@/lib/languages";
   import { listModels } from "@/lib/ollama";
   import {
     cacheLimitPref,
@@ -10,6 +11,8 @@
     MAX_CACHE_MB,
     modelPref,
     promptPref,
+    sourcePref,
+    targetPref,
   } from "@/lib/prefs";
 
   const placeholders = "{source}, {source_code}, {target}, {target_code}, {text}";
@@ -51,11 +54,67 @@
     (e: Error) => (modelsError = e.message),
   );
 
+  let languages = $state(DEFAULT_LANGUAGES);
+  let newCode = $state("");
+  let newName = $state("");
+  languagesPref.getValue().then((value) => (languages = value));
+
+  let code = $derived.by(() => {
+    try {
+      return Intl.getCanonicalLocales(newCode.trim())[0];
+    } catch {
+      return undefined;
+    }
+  });
+  let suggestedName = $derived(
+    code && new Intl.DisplayNames(["en"], { type: "language", fallback: "none" }).of(code),
+  );
+  let languageError = $derived(
+    !newCode.trim()
+      ? undefined
+      : !code
+        ? "Not a valid language code."
+        : languages.some((l) => l.code === code)
+          ? "Already in the list."
+          : undefined,
+  );
+  let canAdd = $derived(!!code && !languageError && !!(newName.trim() || suggestedName));
+
+  /** Drop source / target picks that point at a language no longer in the list. */
+  async function pruneSelection(list: Language[]) {
+    const has = (value: string | null) =>
+      !value || value === "auto" || list.some((l) => l.code === value);
+    if (!has(await sourcePref.getValue())) await sourcePref.removeValue();
+    if (!has(await targetPref.getValue())) await targetPref.removeValue();
+  }
+
+  async function saveLanguages(list: Language[]) {
+    languages = list;
+    await languagesPref.setValue($state.snapshot(list));
+    await pruneSelection(list);
+  }
+
+  async function addLanguage() {
+    if (!canAdd) return;
+    const added = { code: code!, name: newName.trim() || suggestedName! };
+    await saveLanguages(
+      [...languages, added].sort((a, b) => displayName(a).localeCompare(displayName(b))),
+    );
+    newCode = newName = "";
+  }
+
+  async function resetLanguages() {
+    await languagesPref.removeValue();
+    languages = DEFAULT_LANGUAGES;
+    await pruneSelection(DEFAULT_LANGUAGES);
+  }
+
   async function reset() {
     await Promise.all([
       modelPref.removeValue(),
       promptPref.removeValue(),
       cacheLimitPref.removeValue(),
+      resetLanguages(),
     ]);
     model = DEFAULT_MODEL;
     prompt = DEFAULT_PROMPT;
@@ -93,6 +152,60 @@
       bind:value={prompt}
       oninput={() => validPrompt && promptPref.setValue(prompt)}></textarea>
   </Field>
+
+  <section class="flex flex-col gap-1" aria-labelledby="languages-label">
+    <span id="languages-label" class="font-medium">Languages</span>
+    <ul class="control flex max-h-64 flex-col overflow-y-auto">
+      {#each languages as lang (lang.code)}
+        <li class="flex items-center justify-between gap-2">
+          <span>{displayName(lang)} <span class="text-gray-500">{lang.code}</span></span>
+          <Button
+            variant="icon"
+            aria-label="Remove {displayName(lang)}"
+            title="Remove"
+            disabled={languages.length === 1}
+            onclick={() => saveLanguages(languages.filter((l) => l.code !== lang.code))}
+          >
+            ×
+          </Button>
+        </li>
+      {/each}
+    </ul>
+    <form
+      class="flex gap-2"
+      onsubmit={(e) => {
+        e.preventDefault();
+        addLanguage();
+      }}
+    >
+      <input
+        class="control min-w-0 flex-1"
+        aria-label="Language name"
+        placeholder={suggestedName ?? "Name"}
+        bind:value={newName}
+      />
+      <input
+        class="control w-36"
+        aria-label="Language code"
+        placeholder="Code, e.g. pt-BR"
+        bind:value={newCode}
+      />
+      <Button type="submit" disabled={!canAdd}>Add</Button>
+      <Button type="button" onclick={resetLanguages}>Reset</Button>
+    </form>
+    {#if languageError}
+      <span class="text-red-600 dark:text-red-400">{languageError}</span>
+    {/if}
+    <span class="text-gray-500">
+      The default list is the languages supported by <a
+        class="underline"
+        href="https://ollama.com/library/translategemma"
+        target="_blank"
+        rel="noreferrer">TranslateGemma</a
+      >. The name is how the prompt refers to the language, in English by default. The code is BCP
+      47.
+    </span>
+  </section>
 
   <Field
     label="Translation cache"

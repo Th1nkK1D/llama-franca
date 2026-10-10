@@ -4,7 +4,7 @@ export interface Language {
   label?: string;
 }
 
-export const LANGUAGES: Language[] = [
+export const DEFAULT_LANGUAGES: Language[] = [
   { code: "ar", name: "Arabic" },
   { code: "bn", name: "Bengali" },
   { code: "my", name: "Burmese" },
@@ -43,17 +43,24 @@ export const LANGUAGES: Language[] = [
   { code: "vi", name: "Vietnamese" },
 ];
 
+export const languagesPref = storage.defineItem<Language[]>("local:languages", {
+  fallback: DEFAULT_LANGUAGES,
+});
+
 export const displayName = (language: Language) => language.label ?? language.name;
 
-/** Map a detector / `<html lang>` code like "en-US", "zh-TW", "iw" to a supported language. */
-export function findLanguage(code: string | undefined): Language | undefined {
+/** Map a detector / `<html lang>` code like "en-US", "zh-TW", "iw" to one of the user's languages. */
+export async function findLanguage(code: string | undefined): Promise<Language | undefined> {
   if (!code) return;
+  const languages = await languagesPref.getValue();
+  const exact = languages.find((l) => l.code.toLowerCase() === code.toLowerCase());
+  if (exact) return exact;
   const [base = "", ...rest] = code.toLowerCase().split(/[-_]/);
   if (base === "zh") {
     const traditional = rest.some((part) => ["hant", "tw", "hk", "mo"].includes(part));
-    return LANGUAGES.find((l) => l.code === (traditional ? "zh-Hant" : "zh-Hans"));
+    return languages.find((l) => l.code === (traditional ? "zh-Hant" : "zh-Hans"));
   }
   const aliases: Record<string, string> = { iw: "he", fil: "tl", nb: "no", nn: "no" };
   const wanted = aliases[base] ?? base;
-  return LANGUAGES.find((l) => l.code === wanted);
+  return languages.find((l) => l.code === wanted);
 }
