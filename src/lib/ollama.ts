@@ -70,7 +70,11 @@ export async function checkSetup() {
 
 export async function translate(source: Language, target: Language, text: string) {
   const [model, template] = await Promise.all([modelPref.getValue(), promptPref.getValue()]);
-  const body = await request<{ message?: { content: string } }>(
+  const body = await request<{
+    message?: { content: string };
+    eval_count?: number;
+    eval_duration?: number;
+  }>(
     "/api/chat",
     {
       method: "POST",
@@ -84,5 +88,9 @@ export async function translate(source: Language, target: Language, text: string
     },
     model,
   );
-  return (body.message?.content ?? "").trim();
+  return {
+    text: (body.message?.content ?? "").trim(),
+    tokens: body.eval_count ?? 0,
+    duration: body.eval_duration ?? 0,
+  };
 }

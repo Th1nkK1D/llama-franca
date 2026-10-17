@@ -12,6 +12,9 @@
   let actionError = $state<string>();
   let setupError = $state<string>();
   let error = $derived(actionError ?? setupError ?? status?.error);
+  let rate = $derived(
+    status?.tokensPerSecond ? ` · ${Math.round(status.tokensPerSecond)} tok/s` : "",
+  );
   let canTranslate = $derived(
     !status ||
       status.state === "idle" ||
@@ -110,11 +113,36 @@
 
   {#if error}
     <p class="text-red-600 dark:text-red-400">{error}</p>
-  {:else if status?.loadingModel}
-    <p class="text-gray-500">{LOADING_MODEL}</p>
-  {:else if status?.state === "translating"}
-    <p class="text-gray-500">Translating… {status.done} done, {status.pending} queued</p>
-  {:else if status?.state === "translated"}
-    <p class="text-gray-500">Translated {status.done} blocks. More translate as you scroll.</p>
+  {:else if status && status.state !== "idle"}
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-gray-500">
+        {#if status.loadingModel}
+          {LOADING_MODEL}
+        {:else if status.state === "translating"}
+          Translating… {status.done} done, {status.pending} queued{rate}
+        {:else}
+          Translated {status.done} blocks{rate}.{status.full
+            ? ""
+            : " More translate as you scroll."}
+        {/if}
+      </p>
+      <label
+        class="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-gray-500"
+        title="Translate the whole page, not only what scrolls into view"
+      >
+        <input
+          type="checkbox"
+          role="switch"
+          class="peer sr-only"
+          checked={!!status.full}
+          onchange={(e) => run({ type: "set-full-page", full: e.currentTarget.checked })}
+        />
+        Full page
+        <span
+          class="relative h-4 w-7 rounded-full bg-gray-300 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-blue-600 after:absolute after:top-0.5 after:left-0.5 after:size-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-3 dark:bg-gray-600 dark:peer-checked:bg-blue-500"
+          aria-hidden="true"
+        ></span>
+      </label>
+    </div>
   {/if}
 </main>

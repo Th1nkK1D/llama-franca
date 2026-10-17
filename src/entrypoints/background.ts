@@ -89,7 +89,7 @@ export default defineBackground(() => {
           );
         case "translate-text":
           return reply<TranslateTextResult>(
-            translate(message.source, message.target, message.text).then((text) => ({ text })),
+            translate(message.source, message.target, message.text),
             sendResponse,
           );
       }

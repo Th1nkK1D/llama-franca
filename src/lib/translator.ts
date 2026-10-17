@@ -12,8 +12,13 @@ const translations = new Map<string, Promise<string>>();
 let modelReady: Promise<void> | undefined;
 let loadingModel = false;
 let onLoadingModel: (() => void) | undefined;
+let generated = { tokens: 0, duration: 0 };
 
 export const isLoadingModel = () => loadingModel;
+
+export const tokensPerSecond = () =>
+  generated.duration ? (generated.tokens / generated.duration) * 1e9 : undefined;
+export const resetTokensPerSecond = () => (generated = { tokens: 0, duration: 0 });
 
 /** Call `listener` when the model starts or stops loading, until unwatched or another listener takes over. */
 export function watchLoadingModel(listener: () => void) {
@@ -53,6 +58,8 @@ function setLoadingModel(on: boolean) {
 async function sendTranslation(source: Language, target: Language, text: string) {
   await ensureModel();
   const res = await ask<TranslateTextResult>({ type: "translate-text", source, target, text });
+  generated.tokens += res.tokens;
+  generated.duration += res.duration;
   return res.text;
 }
 

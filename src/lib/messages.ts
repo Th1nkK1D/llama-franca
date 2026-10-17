@@ -13,6 +13,9 @@ export interface TranslateTextMessage {
 }
 export interface TranslateTextResult {
   text: string;
+  /** Ollama's eval_count and eval_duration (ns). */
+  tokens: number;
+  duration: number;
 }
 
 /** Content script → background: Ollama loads the model on first use (and after it idles out), which takes a while. */
@@ -32,6 +35,7 @@ export interface BadgeMessage {
 export interface TabMode {
   source: string;
   target: string;
+  full?: boolean;
 }
 
 /** Content script → background */
@@ -44,7 +48,8 @@ export type PageMessage =
   | { type: "translate-page"; source: string; target: string }
   | { type: "translate-selection"; text: string; source: string; target: string }
   | { type: "restore-page" }
-  | { type: "page-status" };
+  | { type: "page-status" }
+  | { type: "set-full-page"; full: boolean };
 
 export interface PageStatus {
   state: "idle" | "translating" | "translated";
@@ -53,6 +58,8 @@ export interface PageStatus {
   target?: string;
   done: number;
   pending: number;
+  full?: boolean;
+  tokensPerSecond?: number;
   loadingModel?: boolean;
   error?: string;
 }

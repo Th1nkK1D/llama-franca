@@ -15,6 +15,8 @@ import {
   isLoadingModel,
   prefetchLines,
   requestTranslation,
+  resetTokensPerSecond,
+  tokensPerSecond,
   watchLoadingModel,
 } from "@/lib/translator";
 
@@ -39,6 +41,8 @@ interface Session {
   source: Language;
   target: Language;
   segments: Segment[];
+  /** Queue every block right away instead of waiting for it to scroll into view. */
+  full: boolean;
   /** Segments waiting to scroll into view, by the element the visibility observer watches. */
   byParent: Map<Element, Segment[]>;
   queue: Segment[];
@@ -77,7 +81,7 @@ export default defineContentScript({
     });
     browser.runtime.onMessage.addListener((message: PageMessage, _sender, sendResponse) => {
       if (message?.type === "translate-page") {
-        start(message.source, message.target).then(
+        start(message.source, message.target, session?.full).then(
           () => sendResponse(status()),
           (error: Error) => sendResponse({ ...status(), error: error.message }),
         );
@@ -91,6 +95,10 @@ export default defineContentScript({
         setTabMode(null);
         sendResponse(status());
       }
+      if (message?.type === "set-full-page") {
+        if (session) setFullPage(session, message.full);
+        sendResponse(status());
+      }
       if (message?.type === "page-status") sendResponse(status());
     });
 
@@ -98,7 +106,7 @@ export default defineContentScript({
       .sendMessage({ type: "get-tab-mode" } satisfies TabModeMessage)
       .then((mode: TabMode | null) => {
         // Errors like "page is already in the target language" just leave this page as is.
-        if (mode && !session) start(mode.source, mode.target).catch(() => {});
+        if (mode && !session) start(mode.source, mode.target, mode.full).catch(() => {});
       });
   },
 });
@@ -177,6 +185,8 @@ function status(): PageStatus {
     target: session.target.code,
     done: session.done,
     pending,
+    full: session.full,
+    tokensPerSecond: tokensPerSecond(),
     loadingModel: isLoadingModel(),
     error: session.error,
   };
@@ -192,8 +202,9 @@ function report() {
   browser.runtime.sendMessage(message).catch(() => {});
 }
 
-async function start(sourceCode: string, targetCode: string) {
+async function start(sourceCode: string, targetCode: string, full = false) {
   restore();
+  resetTokensPerSecond();
   const target = await findTarget(targetCode);
 
   const segments = collectSegments(document.body);
@@ -211,6 +222,7 @@ async function start(sourceCode: string, targetCode: string) {
     source,
     target,
     segments: [],
+    full,
     byParent: new Map(),
     queue: [],
     inFlight: 0,
@@ -218,12 +230,12 @@ async function start(sourceCode: string, targetCode: string) {
     observer: new IntersectionObserver((entries) => onVisible(current, entries), {
       rootMargin: "300px 0px",
     }),
-    observed: false,
+    observed: full,
     mutations: new MutationObserver((records) => onMutations(current, records)),
     scanRoots: new Set(),
   };
   session = current;
-  setTabMode({ source: sourceCode, target: targetCode });
+  setTabMode({ source: sourceCode, target: targetCode, full });
   addSegments(current, segments);
   current.mutations.observe(document.body, { childList: true, subtree: true });
   report();
@@ -233,13 +245,35 @@ function addSegments(s: Session, segments: Segment[]) {
   for (const segment of segments) {
     segment.original.forEach((node) => known.add(node));
     s.segments.push(segment);
-    const waiting = s.byParent.get(segment.parent);
-    if (waiting) {
-      waiting.push(segment);
-    } else {
-      s.byParent.set(segment.parent, [segment]);
-      s.observer.observe(segment.parent);
-    }
+    if (s.full) s.queue.push(segment);
+    else waitForView(s, segment);
+  }
+  if (s.full) pump(s);
+}
+
+function waitForView(s: Session, segment: Segment) {
+  const waiting = s.byParent.get(segment.parent);
+  if (waiting) {
+    waiting.push(segment);
+  } else {
+    s.byParent.set(segment.parent, [segment]);
+    s.observer.observe(segment.parent);
+  }
+}
+
+/** Off puts queued blocks back to wait for the observer, which queues the visible ones again. */
+function setFullPage(s: Session, full: boolean) {
+  s.full = full;
+  setTabMode({ source: s.requestedSource, target: s.target.code, full });
+  if (full) {
+    s.observed = true;
+    s.observer.disconnect();
+    for (const waiting of s.byParent.values()) s.queue.push(...waiting);
+    s.byParent.clear();
+    pump(s);
+  } else {
+    for (const segment of s.queue.splice(0)) waitForView(s, segment);
+    report();
   }
 }
 
